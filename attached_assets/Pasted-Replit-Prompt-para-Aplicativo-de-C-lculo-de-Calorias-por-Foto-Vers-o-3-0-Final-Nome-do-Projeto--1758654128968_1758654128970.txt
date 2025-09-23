@@ -1,0 +1,92 @@
+Replit Prompt para Aplicativo de Cálculo de Calorias por Foto (Versão 3.0 - Final)
+Nome do Projeto: CalorieSnap
+
+Descrição: CalorieSnap é um aplicativo móvel completo de nutrição que permite aos usuários calcular as calorias dos alimentos por foto, registrar refeições em um calendário e acompanhar seu progresso com gráficos detalhados. O aplicativo cria metas calóricas personalizadas com base no perfil e nos objetivos de cada usuário, ajudando-os a alcançar seus resultados de forma eficiente.
+
+Funcionalidades Principais:
+
+Registro e Cálculo de Metas Personalizadas:
+
+Criação de conta com e-mail/senha ou login social (Google, Apple).
+
+Coleta de Dados do Perfil: Durante o registro, o usuário informa:
+
+Altura
+
+Peso
+
+Idade
+
+Gênero (Masculino / Feminino)
+
+Objetivo: Emagrecer, Manter o peso, ou Ganhar Músculo.
+
+Cálculo Automático da Meta Calórica: O sistema utiliza os dados do perfil para calcular a Taxa Metabólica Basal (TMB) e as necessidades calóricas diárias, usando uma fórmula reconhecida (como Mifflin-St Jeor ou Harris-Benedict).
+
+Ajuste por Objetivo: A meta diária é ajustada automaticamente, criando um déficit calórico (para emagrecer) ou um superávit (para ganhar músculo).
+
+Cálculo de Calorias por Foto:
+
+Integração com a câmera para tirar fotos de alimentos ou fazer upload da galeria.
+
+Algoritmo de reconhecimento de imagem para identificar o tipo e a quantidade de alimento.
+
+Cálculo automático de calorias e exibição de macronutrientes (proteínas, carboidratos, gorduras).
+
+Categorização de Refeições: O usuário classifica a refeição como café da manhã, almoço, lanche ou janta.
+
+Calendário de Consumo:
+
+Registro Automático: Cada refeição analisada é salva automaticamente no calendário do dia correspondente.
+
+Visualização Histórica: Permite ao usuário navegar pelo calendário para ver o histórico de consumo de qualquer dia.
+
+Detalhes da Refeição: Ao selecionar um dia, o usuário vê a lista de refeições e os detalhes de cada alimento consumido.
+
+Dashboard com Gráficos e Acompanhamento:
+
+Acompanhamento da Meta: A tela principal mostra o total de calorias consumidas no dia em relação à meta personalizada calculada.
+
+Gráficos de Calorias:
+
+Diário: Mostra a distribuição de calorias entre as refeições do dia.
+
+Semanal: Gráfico de barras com o consumo total de calorias de cada dia da semana.
+
+Mensal: Gráfico de linhas com a média de calorias diárias consumidas ao longo do mês.
+
+Estatísticas de Progresso: Médias de consumo e comparação com as metas estabelecidas.
+
+Interface de Usuário (UI):
+
+Intuitiva, com design moderno e limpo.
+
+Navegação clara entre as seções: Câmera, Calendário e Dashboard.
+
+Feedback visual claro sobre o progresso em relação à meta diária.
+
+Tecnologias Sugeridas:
+
+Frontend (Mobile App): React Native ou Flutter.
+
+Backend: Node.js (com Express.js) ou Python (com Django/Flask).
+
+Banco de Dados: MongoDB (flexível para dados de refeições) ou PostgreSQL.
+
+IA/Visão Computacional: Google Cloud Vision API, AWS Rekognition, ou um modelo customizado.
+
+Bibliotecas de Gráficos: react-native-chart-kit (para React Native) ou fl_chart (para Flutter).
+
+Passos para Desenvolvimento (Sugestão):
+
+Configuração e Modelagem de Dados: Estruturar o banco de dados para armazenar usuários, perfis (com dados de altura, peso, etc.) e registros de refeições.
+
+Módulo de Autenticação e Perfil: Implementar o registro de usuários, coletando os dados necessários para o cálculo das metas.
+
+Lógica de Cálculo de Metas: Implementar a lógica no backend para calcular as necessidades calóricas com base nos dados do perfil e objetivo.
+
+Câmera e IA: Desenvolver a funcionalidade central de análise de fotos.
+
+Calendário e Dashboard: Criar as interfaces para registro histórico e visualização de gráficos.
+
+Integração e Testes: Conectar todas as partes e realizar testes completos de usabilidade e funcionalidade.
