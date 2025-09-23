@@ -55,6 +55,8 @@ export interface DailySummary {
   totalProtein: number;
   totalFat: number;
   mealCount: number;
+  caloriesBurned?: number;
+  netCalories?: number;
 }
 
 export interface NutritionTotals {
@@ -76,4 +78,27 @@ export interface WeeklyData {
   date: string;
   calories: number;
   day: string;
+}
+
+export interface Exercise {
+  id?: string;
+  name: string;
+  category: 'cardio' | 'strength' | 'sports' | 'flexibility';
+  metValue: number;
+  description?: string;
+  createdAt?: Date;
+}
+
+export interface ActivityEntry {
+  id?: string;
+  userId?: string;
+  exerciseId?: string;
+  customExerciseName?: string;
+  duration: number; // minutes
+  intensity: 'light' | 'moderate' | 'vigorous';
+  caloriesBurned: number;
+  date: Date;
+  notes?: string;
+  createdAt?: Date;
+  exercise?: Exercise;
 }

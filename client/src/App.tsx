@@ -13,6 +13,7 @@ import { TabNavigation } from "@/components/tab-navigation";
 // Pages
 import Dashboard from "@/pages/dashboard";
 import CameraPage from "@/pages/camera";
+import RunningPage from "@/pages/running";
 import Diary from "@/pages/diary";
 import CalendarPage from "@/pages/calendar";
 import ProfileSetup from "@/pages/profile-setup";
@@ -42,6 +43,8 @@ function AppContent() {
         return <Dashboard />;
       case 'camera':
         return <CameraPage />;
+      case 'running':
+        return <RunningPage />;
       case 'diary':
         return <Diary />;
       case 'calendar':

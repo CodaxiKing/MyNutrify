@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { MealEntry, DailySummary, FoodAnalysis } from "@/types/nutrition";
+import { MealEntry, DailySummary, FoodAnalysis, Exercise, ActivityEntry } from "@/types/nutrition";
 
 export function useDailySummary(date?: Date) {
   const dateParam = date ? date.toISOString().split('T')[0] : undefined;
@@ -71,6 +71,79 @@ export function useDeleteMeal() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/meals'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/daily-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/weekly-summary'] });
+    },
+  });
+}
+
+// Activity hooks
+export function useExercises(category?: string) {
+  return useQuery<Exercise[]>({
+    queryKey: ['/api/exercises', category],
+    queryFn: async () => {
+      const url = category ? `/api/exercises?category=${category}` : '/api/exercises';
+      const response = await apiRequest('GET', url);
+      return response.json();
+    },
+  });
+}
+
+export function useSearchExercises(query: string, category?: string) {
+  return useQuery<Exercise[]>({
+    queryKey: ['/api/exercises/search', query, category],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.append('q', query);
+      if (category) params.append('category', category);
+      
+      const response = await apiRequest('GET', `/api/exercises/search?${params}`);
+      return response.json();
+    },
+    enabled: !!query && query.length > 0,
+  });
+}
+
+export function useActivitiesForDate(date?: Date) {
+  const dateParam = date ? date.toISOString().split('T')[0] : undefined;
+  
+  return useQuery<ActivityEntry[]>({
+    queryKey: ['/api/activities', dateParam],
+  });
+}
+
+export function useAddActivity() {
+  const queryClient = useQueryClient();
+  
+  return useMutation<ActivityEntry, Error, {
+    exerciseId?: string;
+    customExerciseName?: string;
+    duration: number;
+    intensity: 'light' | 'moderate' | 'vigorous';
+    notes?: string;
+    metValue?: number;
+  }>({
+    mutationFn: async (activity) => {
+      const response = await apiRequest('POST', '/api/activities', activity);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/activities'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/daily-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/weekly-summary'] });
+    },
+  });
+}
+
+export function useDeleteActivity() {
+  const queryClient = useQueryClient();
+  
+  return useMutation<void, Error, string>({
+    mutationFn: async (activityId: string) => {
+      await apiRequest('DELETE', `/api/activities/${activityId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/activities'] });
       queryClient.invalidateQueries({ queryKey: ['/api/daily-summary'] });
       queryClient.invalidateQueries({ queryKey: ['/api/weekly-summary'] });
     },

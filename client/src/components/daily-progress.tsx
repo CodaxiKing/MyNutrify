@@ -5,11 +5,14 @@ interface DailyProgressProps {
   consumed: number;
   goal: number;
   remaining?: number;
+  burned?: number;
+  netCalories?: number;
 }
 
-export function DailyProgress({ consumed, goal, remaining }: DailyProgressProps) {
+export function DailyProgress({ consumed, goal, remaining, burned = 0, netCalories }: DailyProgressProps) {
   const progressPercentage = Math.min(100, (consumed / goal) * 100);
   const actualRemaining = remaining ?? Math.max(0, goal - consumed);
+  const actualNetCalories = netCalories ?? (consumed - burned);
   
   // Calculate stroke-dasharray for the progress ring
   const circumference = 2 * Math.PI * 15.9155; // radius from SVG
@@ -55,17 +58,26 @@ export function DailyProgress({ consumed, goal, remaining }: DailyProgressProps)
           </div>
         </div>
         
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div>
-            <div className="text-sm text-muted-foreground">Remaining</div>
-            <div className="font-semibold text-accent" data-testid="text-remaining-calories">
-              {formatCalories(actualRemaining)}
-            </div>
-          </div>
+        <div className="grid grid-cols-2 gap-4 text-center mb-4">
           <div>
             <div className="text-sm text-muted-foreground">Consumed</div>
             <div className="font-semibold" data-testid="text-total-consumed">
               {formatCalories(consumed)}
+            </div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Burned</div>
+            <div className="font-semibold text-orange-600" data-testid="text-calories-burned">
+              {formatCalories(burned)}
+            </div>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4 text-center">
+          <div>
+            <div className="text-sm text-muted-foreground">Net Calories</div>
+            <div className={`font-semibold ${actualNetCalories < goal ? 'text-green-600' : 'text-primary'}`} data-testid="text-net-calories">
+              {formatCalories(actualNetCalories)}
             </div>
           </div>
           <div>
