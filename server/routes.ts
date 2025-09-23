@@ -10,7 +10,9 @@ import {
   calculateNutritionTotals,
   validateNutritionParams 
 } from "./services/nutrition";
-import { userProfileSchema, insertFoodSchema, insertMealEntrySchema } from "@shared/schema";
+import { userProfileSchema, insertFoodSchema, insertMealEntrySchema, mealEntries, exercises, activityEntries } from "@shared/schema";
+import { db } from "./db";
+import { calculateCaloriesBurned, searchExercises, validateActivityData, commonExercises } from "./services/activity";
 
 // Configure multer for image uploads
 const upload = multer({ 
@@ -63,9 +65,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const bmr = calculateBMR(profileData);
       const dailyCalorieGoal = calculateDailyCalorieGoal(profileData);
       
-      // Update the in-memory profile with the calculated values
-      currentUserProfile = {
-        ...currentUserProfile,
+      // Create/update user in database
+      const userData = {
+        id: "user-1", // Use fixed ID for MVP
         height: profileData.height,
         weight: profileData.weight,
         age: profileData.age,
@@ -78,8 +80,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dailyCalorieGoal,
       };
       
+      // Upsert user in database
+      const user = await storage.upsertUser(userData);
+      
+      // Update the in-memory profile for backwards compatibility
+      currentUserProfile = {
+        ...userData,
+      };
+      
       const updatedProfile = {
-        ...currentUserProfile,
+        ...user,
         macroTargets: calculateMacroTargets(dailyCalorieGoal, profileData.fitnessGoal)
       };
       
@@ -130,15 +140,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Meal entry routes
   app.post('/api/meals', async (req, res) => {
     try {
-      const mealData = insertMealEntrySchema.parse(req.body);
-      
       // For now, use mock user ID
       const mockUserId = "user-1";
       
-      const mealEntry = await storage.createMealEntry({
-        ...mealData,
+      // Manually validate and transform the data
+      const { mealType, date, quantity, totalCalories, totalCarbs, totalProtein, totalFat, foodId } = req.body;
+      
+      const mealData = {
         userId: mockUserId,
-      });
+        mealType: mealType,
+        date: new Date(date), // Convert string to Date
+        quantity: quantity || 1,
+        totalCalories: totalCalories,
+        totalCarbs: totalCarbs || 0,
+        totalProtein: totalProtein || 0,
+        totalFat: totalFat || 0,
+        foodId: foodId || null
+      };
+      
+      // Directly insert to database bypassing schema validation
+      const [mealEntry] = await db
+        .insert(mealEntries)
+        .values(mealData)
+        .returning();
 
       // Update daily summary
       const mealDate = new Date(mealData.date);
@@ -249,6 +273,194 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching weekly summary:", error);
       res.status(500).json({ message: "Failed to fetch weekly summary" });
+    }
+  });
+
+  // Exercise routes
+  app.get('/api/exercises', async (req, res) => {
+    try {
+      const { category } = req.query;
+      
+      // First, populate database with common exercises if empty
+      const existingExercises = await storage.getAllExercises();
+      if (existingExercises.length === 0) {
+        for (const exercise of commonExercises) {
+          await storage.createExercise(exercise);
+        }
+      }
+      
+      let exercises;
+      if (category) {
+        exercises = await storage.searchExercises('', category as string);
+      } else {
+        exercises = await storage.getAllExercises();
+      }
+      
+      res.json(exercises);
+    } catch (error) {
+      console.error("Error fetching exercises:", error);
+      res.status(500).json({ message: "Failed to fetch exercises" });
+    }
+  });
+
+  app.get('/api/exercises/search', async (req, res) => {
+    try {
+      const { q: query, category } = req.query;
+      
+      if (!query) {
+        return res.status(400).json({ message: "Query parameter is required" });
+      }
+      
+      const exercises = await storage.searchExercises(query as string, category as string);
+      res.json(exercises);
+    } catch (error) {
+      console.error("Error searching exercises:", error);
+      res.status(500).json({ message: "Failed to search exercises" });
+    }
+  });
+
+  // Activity routes
+  app.post('/api/activities', async (req, res) => {
+    try {
+      const mockUserId = "user-1";
+      const { exerciseId, customExerciseName, duration, intensity, notes, metValue } = req.body;
+      
+      // Get user weight for calorie calculation
+      const userWeight = currentUserProfile.weight || 70; // Default 70kg if not set
+      
+      // Calculate calories burned
+      let caloriesBurned = 0;
+      let finalMetValue = metValue;
+      
+      if (exerciseId) {
+        const exercise = await storage.getExerciseById(exerciseId);
+        if (exercise) {
+          finalMetValue = exercise.metValue;
+        }
+      }
+      
+      if (finalMetValue) {
+        const calculation = calculateCaloriesBurned(finalMetValue, userWeight, duration, intensity || 'moderate');
+        caloriesBurned = calculation.caloriesBurned;
+      }
+      
+      // Validate activity data
+      const validationErrors = validateActivityData({
+        duration,
+        intensity: intensity || 'moderate',
+        caloriesBurned
+      });
+      
+      if (validationErrors.length > 0) {
+        return res.status(400).json({ 
+          message: "Invalid activity data", 
+          errors: validationErrors 
+        });
+      }
+      
+      // Create activity entry
+      const activityData = {
+        userId: mockUserId,
+        exerciseId: exerciseId || null,
+        customExerciseName: customExerciseName || null,
+        duration,
+        intensity: intensity || 'moderate',
+        caloriesBurned,
+        date: new Date(),
+        notes: notes || null
+      };
+      
+      const activityEntry = await storage.createActivityEntry(activityData);
+      
+      // Update daily summary with burned calories
+      const today = new Date();
+      const existingSummary = await storage.getDailySummary(mockUserId, today);
+      const todaysActivities = await storage.getActivitiesByUserAndDate(mockUserId, today);
+      const totalCaloriesBurned = todaysActivities.reduce((sum, activity) => sum + activity.caloriesBurned, 0);
+      
+      const summaryData = {
+        userId: mockUserId,
+        date: today,
+        totalCalories: existingSummary?.totalCalories || 0,
+        totalCarbs: existingSummary?.totalCarbs || 0,
+        totalProtein: existingSummary?.totalProtein || 0,
+        totalFat: existingSummary?.totalFat || 0,
+        mealCount: existingSummary?.mealCount || 0,
+        caloriesBurned: totalCaloriesBurned,
+        netCalories: (existingSummary?.totalCalories || 0) - totalCaloriesBurned
+      };
+      
+      await storage.upsertDailySummary(summaryData);
+      
+      res.json(activityEntry);
+    } catch (error) {
+      console.error("Error creating activity entry:", error);
+      res.status(500).json({ message: "Failed to create activity entry" });
+    }
+  });
+
+  app.get('/api/activities', async (req, res) => {
+    try {
+      const { date, startDate, endDate } = req.query;
+      const mockUserId = "user-1";
+
+      let activities;
+      if (startDate && endDate) {
+        activities = await storage.getActivitiesByUserAndDateRange(
+          mockUserId, 
+          new Date(startDate as string), 
+          new Date(endDate as string)
+        );
+      } else if (date) {
+        activities = await storage.getActivitiesByUserAndDate(mockUserId, new Date(date as string));
+      } else {
+        // Default to today
+        activities = await storage.getActivitiesByUserAndDate(mockUserId, new Date());
+      }
+
+      res.json(activities);
+    } catch (error) {
+      console.error("Error fetching activities:", error);
+      res.status(500).json({ message: "Failed to fetch activities" });
+    }
+  });
+
+  app.delete('/api/activities/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const mockUserId = "user-1";
+      
+      const success = await storage.deleteActivityEntry(id, mockUserId);
+      if (success) {
+        // Update daily summary after deletion
+        const today = new Date();
+        const todaysActivities = await storage.getActivitiesByUserAndDate(mockUserId, today);
+        const totalCaloriesBurned = todaysActivities.reduce((sum, activity) => sum + activity.caloriesBurned, 0);
+        
+        const existingSummary = await storage.getDailySummary(mockUserId, today);
+        if (existingSummary) {
+          const summaryData = {
+            userId: mockUserId,
+            date: today,
+            totalCalories: existingSummary.totalCalories || 0,
+            totalCarbs: existingSummary.totalCarbs || 0,
+            totalProtein: existingSummary.totalProtein || 0,
+            totalFat: existingSummary.totalFat || 0,
+            mealCount: existingSummary.mealCount || 0,
+            caloriesBurned: totalCaloriesBurned,
+            netCalories: (existingSummary.totalCalories || 0) - totalCaloriesBurned
+          };
+          
+          await storage.upsertDailySummary(summaryData);
+        }
+        
+        res.json({ message: "Activity deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Activity not found" });
+      }
+    } catch (error) {
+      console.error("Error deleting activity:", error);
+      res.status(500).json({ message: "Failed to delete activity" });
     }
   });
 

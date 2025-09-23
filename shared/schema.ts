@@ -72,6 +72,30 @@ export const mealEntries = pgTable("meal_entries", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Exercise database with MET values
+export const exercises = pgTable("exercises", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 200 }).notNull(),
+  category: varchar("category", { length: 50 }).notNull(), // 'cardio', 'strength', 'sports', 'flexibility'
+  metValue: real("met_value").notNull(), // Metabolic Equivalent of Task
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// User activity entries
+export const activityEntries = pgTable("activity_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  exerciseId: varchar("exercise_id").references(() => exercises.id),
+  customExerciseName: varchar("custom_exercise_name", { length: 200 }), // For custom exercises
+  duration: integer("duration").notNull(), // minutes
+  intensity: varchar("intensity", { length: 20 }).default('moderate'), // 'light', 'moderate', 'vigorous'
+  caloriesBurned: real("calories_burned").notNull(),
+  date: timestamp("date").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Daily nutrition summaries for faster queries
 export const dailySummaries = pgTable("daily_summaries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -82,6 +106,8 @@ export const dailySummaries = pgTable("daily_summaries", {
   totalProtein: real("total_protein").default(0),
   totalFat: real("total_fat").default(0),
   mealCount: integer("meal_count").default(0),
+  caloriesBurned: real("calories_burned").default(0), // New field for burned calories
+  netCalories: real("net_calories").default(0), // Consumed - Burned
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("daily_summaries_user_date_idx").on(table.userId, table.date),
@@ -91,6 +117,7 @@ export const dailySummaries = pgTable("daily_summaries", {
 export const userRelations = relations(users, ({ many }) => ({
   mealEntries: many(mealEntries),
   dailySummaries: many(dailySummaries),
+  activityEntries: many(activityEntries),
 }));
 
 export const mealEntryRelations = relations(mealEntries, ({ one }) => ({
@@ -101,6 +128,17 @@ export const mealEntryRelations = relations(mealEntries, ({ one }) => ({
   food: one(foods, {
     fields: [mealEntries.foodId],
     references: [foods.id],
+  }),
+}));
+
+export const activityEntryRelations = relations(activityEntries, ({ one }) => ({
+  user: one(users, {
+    fields: [activityEntries.userId],
+    references: [users.id],
+  }),
+  exercise: one(exercises, {
+    fields: [activityEntries.exerciseId],
+    references: [exercises.id],
   }),
 }));
 
@@ -136,9 +174,26 @@ export const insertMealEntrySchema = createInsertSchema(mealEntries).omit({
   createdAt: true,
 });
 
+export const insertExerciseSchema = createInsertSchema(exercises).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertActivityEntrySchema = createInsertSchema(activityEntries).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertDailySummarySchema = createInsertSchema(dailySummaries).omit({
   id: true,
   updatedAt: true,
+});
+
+// Enhanced schemas with additional validation
+export const activityEntrySchema = insertActivityEntrySchema.extend({
+  duration: z.number().min(1).max(1440), // 1 minute to 24 hours
+  intensity: z.enum(['light', 'moderate', 'vigorous']),
+  caloriesBurned: z.number().min(0),
 });
 
 // Types
@@ -152,6 +207,12 @@ export type InsertFood = z.infer<typeof insertFoodSchema>;
 
 export type MealEntry = typeof mealEntries.$inferSelect;
 export type InsertMealEntry = z.infer<typeof insertMealEntrySchema>;
+
+export type Exercise = typeof exercises.$inferSelect;
+export type InsertExercise = z.infer<typeof insertExerciseSchema>;
+
+export type ActivityEntry = typeof activityEntries.$inferSelect;
+export type InsertActivityEntry = z.infer<typeof insertActivityEntrySchema>;
 
 export type DailySummary = typeof dailySummaries.$inferSelect;
 export type InsertDailySummary = z.infer<typeof insertDailySummarySchema>;

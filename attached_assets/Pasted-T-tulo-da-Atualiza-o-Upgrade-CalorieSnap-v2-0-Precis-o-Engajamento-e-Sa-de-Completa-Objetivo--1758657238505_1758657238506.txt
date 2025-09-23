@@ -1,0 +1,57 @@
+Título da Atualização: Upgrade CalorieSnap v2.0 - Precisão, Engajamento e Saúde Completa
+
+Objetivo: Evoluir o aplicativo "CalorieSnap", adicionando um conjunto de funcionalidades avançadas para melhorar a precisão dos dados, aumentar o engajamento do usuário e fornecer uma visão mais completa da saúde. As novas funcionalidades devem ser integradas de forma coesa à estrutura existente.
+
+Funcionalidades a Adicionar:
+
+Módulo 1: Precisão e Controle do Usuário
+
+Scanner de Código de Barras:
+
+Implementação: Integrar um leitor de código de barras usando a câmera do dispositivo. Ao escanear, o app deve fazer uma chamada para uma API pública de alimentos (como a OpenFoodFacts API) usando o código de barras. As informações nutricionais retornadas devem ser exibidas em um modal, com um botão para "Adicionar à Refeição".
+
+Entrada Manual de Alimentos:
+
+Implementação: Criar uma nova tela ou modal para "Adicionar Alimento Manualmente". Deve conter um campo de busca que pesquisa em tempo real (on-change) no banco de dados de alimentos. Ao selecionar um item, o usuário deve poder definir a quantidade (em gramas ou porções) e adicioná-lo ao seu diário.
+
+Criação de Refeições e Receitas:
+
+Implementação: Desenvolver uma seção "Minhas Receitas". O usuário pode criar uma nova receita, dar um nome, e adicionar múltiplos ingredientes (buscando no banco de dados). O sistema deve somar os macros e calorias de todos os ingredientes. O usuário deve poder salvar a receita e, posteriormente, registrar porções dela (ex: "1 fatia da minha lasanha") no diário.
+
+Módulo 2: Engajamento e Motivação
+
+Registro de Consumo de Água:
+
+Implementação: No Dashboard principal, adicionar uma seção para "Consumo de Água". Incluir ícones interativos (ex: copos de 250ml) que o usuário pode clicar para registrar o consumo. Um contador deve mostrar o total de água consumido no dia.
+
+Sistema de Gamificação:
+
+Implementação: No backend, criar lógica para rastrear sequências (streaks) de uso diário. Definir gatilhos para conquistas (ex: "Registrou o café da manhã 7 dias seguidos", "Atingiu a meta de água pela primeira vez"). Criar uma nova tela de "Conquistas" no perfil do usuário para exibir as medalhas ganhas.
+
+Relatórios de Progresso:
+
+Implementação: Criar um script no backend que gera um resumo semanal/mensal com estatísticas (média de calorias, dias em que a meta foi atingida, macro mais consumido, etc.). Exibir este resumo em um card no Dashboard ou enviar como uma notificação push.
+
+Módulo 3: Visão de Saúde Completa
+
+Registro de Atividades Físicas:
+
+Implementação: Criar uma função para "Registrar Atividade". O usuário poderá buscar um exercício (ex: Corrida, Musculação), definir a duração e a intensidade. O sistema deve calcular as calorias gastas (usando fórmulas baseadas em METs e no peso do usuário). No dashboard, exibir: Calorias Consumidas - Calorias Gastas = Calorias Líquidas.
+
+Acompanhamento Detalhado de Macronutrientes:
+
+Implementação: Atualizar o Dashboard. Além do gráfico de calorias, adicionar três novos gráficos de progresso (barras ou anéis) para Proteínas, Carboidratos e Gorduras, mostrando o consumo em relação às metas diárias personalizadas.
+
+Integração com Apps de Saúde:
+
+Implementação: Implementar integração com as APIs de saúde nativas: HealthKit para iOS (Apple Health) e Google Fit para Android. Pedir permissão ao usuário para ler dados de atividades físicas e peso, sincronizando-os automaticamente para preencher os registros no app.
+
+Tecnologias Adicionais Sugeridas:
+
+API de Alimentos: OpenFoodFacts (gratuita e abrangente para códigos de barra).
+
+Integração de Saúde (React Native): react-native-health ou react-native-google-fit.
+
+Integração de Saúde (Flutter): health ou health_kit.
+
+Observação para a IA: Integre estas novas funcionalidades de forma modular e mantenha a consistência da interface de usuário com o design já estabelecido. Priorize a experiência do usuário, garantindo que os novos recursos sejam fáceis de encontrar e usar.

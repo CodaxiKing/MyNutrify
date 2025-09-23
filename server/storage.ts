@@ -3,6 +3,8 @@ import {
   foods,
   mealEntries,
   dailySummaries,
+  exercises,
+  activityEntries,
   type User,
   type UpsertUser,
   type UserProfile,
@@ -12,6 +14,10 @@ import {
   type InsertMealEntry,
   type DailySummary,
   type InsertDailySummary,
+  type Exercise,
+  type InsertExercise,
+  type ActivityEntry,
+  type InsertActivityEntry,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, asc, gte, lte, sql } from "drizzle-orm";
@@ -31,6 +37,18 @@ export interface IStorage {
   getMealsByUserAndDate(userId: string, date: Date): Promise<MealEntry[]>;
   getMealsByUserAndDateRange(userId: string, startDate: Date, endDate: Date): Promise<MealEntry[]>;
   deleteMealEntry(id: string, userId: string): Promise<boolean>;
+  
+  // Exercise operations
+  createExercise(exercise: InsertExercise): Promise<Exercise>;
+  getExerciseById(id: string): Promise<Exercise | undefined>;
+  searchExercises(query: string, category?: string): Promise<Exercise[]>;
+  getAllExercises(): Promise<Exercise[]>;
+  
+  // Activity operations
+  createActivityEntry(entry: InsertActivityEntry): Promise<ActivityEntry>;
+  getActivitiesByUserAndDate(userId: string, date: Date): Promise<ActivityEntry[]>;
+  getActivitiesByUserAndDateRange(userId: string, startDate: Date, endDate: Date): Promise<ActivityEntry[]>;
+  deleteActivityEntry(id: string, userId: string): Promise<boolean>;
   
   // Daily summary operations
   getDailySummary(userId: string, date: Date): Promise<DailySummary | undefined>;
@@ -83,6 +101,42 @@ export class DatabaseStorage implements IStorage {
     return food;
   }
 
+  // Exercise operations
+  async createExercise(exercise: InsertExercise): Promise<Exercise> {
+    const [createdExercise] = await db
+      .insert(exercises)
+      .values(exercise)
+      .returning();
+    return createdExercise;
+  }
+
+  async getExerciseById(id: string): Promise<Exercise | undefined> {
+    const [exercise] = await db.select().from(exercises).where(eq(exercises.id, id));
+    return exercise;
+  }
+
+  async searchExercises(query: string, category?: string): Promise<Exercise[]> {
+    const lowerQuery = query.toLowerCase();
+    let whereCondition = sql`LOWER(${exercises.name}) LIKE ${'%' + lowerQuery + '%'} OR LOWER(${exercises.description}) LIKE ${'%' + lowerQuery + '%'}`;
+    
+    if (category) {
+      whereCondition = sql`(${whereCondition}) AND ${exercises.category} = ${category}`;
+    }
+    
+    return await db
+      .select()
+      .from(exercises)
+      .where(whereCondition)
+      .orderBy(asc(exercises.name));
+  }
+
+  async getAllExercises(): Promise<Exercise[]> {
+    return await db
+      .select()
+      .from(exercises)
+      .orderBy(asc(exercises.category), asc(exercises.name));
+  }
+
   // Meal operations
   async createMealEntry(entry: InsertMealEntry): Promise<MealEntry> {
     const [mealEntry] = await db
@@ -132,6 +186,55 @@ export class DatabaseStorage implements IStorage {
     return result.rowCount ? result.rowCount > 0 : false;
   }
 
+  // Activity operations
+  async createActivityEntry(entry: InsertActivityEntry): Promise<ActivityEntry> {
+    const [activityEntry] = await db
+      .insert(activityEntries)
+      .values(entry)
+      .returning();
+    return activityEntry;
+  }
+
+  async getActivitiesByUserAndDate(userId: string, date: Date): Promise<ActivityEntry[]> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    return await db
+      .select()
+      .from(activityEntries)
+      .where(
+        and(
+          eq(activityEntries.userId, userId),
+          gte(activityEntries.date, startOfDay),
+          lte(activityEntries.date, endOfDay)
+        )
+      )
+      .orderBy(desc(activityEntries.date));
+  }
+
+  async getActivitiesByUserAndDateRange(userId: string, startDate: Date, endDate: Date): Promise<ActivityEntry[]> {
+    return await db
+      .select()
+      .from(activityEntries)
+      .where(
+        and(
+          eq(activityEntries.userId, userId),
+          gte(activityEntries.date, startDate),
+          lte(activityEntries.date, endDate)
+        )
+      )
+      .orderBy(desc(activityEntries.date));
+  }
+
+  async deleteActivityEntry(id: string, userId: string): Promise<boolean> {
+    const result = await db
+      .delete(activityEntries)
+      .where(and(eq(activityEntries.id, id), eq(activityEntries.userId, userId)));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
   // Daily summary operations
   async getDailySummary(userId: string, date: Date): Promise<DailySummary | undefined> {
     const startOfDay = new Date(date);
@@ -153,22 +256,34 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertDailySummary(summary: InsertDailySummary): Promise<DailySummary> {
-    const [result] = await db
-      .insert(dailySummaries)
-      .values(summary)
-      .onConflictDoUpdate({
-        target: [dailySummaries.userId, dailySummaries.date],
-        set: {
+    // Try to find existing summary for the user and date
+    const existing = await this.getDailySummary(summary.userId, summary.date);
+    
+    if (existing) {
+      // Update existing record
+      const [updated] = await db
+        .update(dailySummaries)
+        .set({
           totalCalories: summary.totalCalories,
           totalCarbs: summary.totalCarbs,
           totalProtein: summary.totalProtein,
           totalFat: summary.totalFat,
           mealCount: summary.mealCount,
+          caloriesBurned: summary.caloriesBurned,
+          netCalories: summary.netCalories,
           updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return result;
+        })
+        .where(eq(dailySummaries.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      // Insert new record
+      const [created] = await db
+        .insert(dailySummaries)
+        .values(summary)
+        .returning();
+      return created;
+    }
   }
 
   async getDailySummariesForRange(userId: string, startDate: Date, endDate: Date): Promise<DailySummary[]> {
