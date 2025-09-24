@@ -108,67 +108,127 @@ export default function RunningPage() {
     gender: profile?.gender || 'male'
   };
 
-  // Initialize map
+  // Robust map initialization with proper cleanup
   useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return;
+    let isCleaningUp = false;
+    let mapInstance: L.Map | null = null;
 
-    // Check if geolocation is available
-    if (!navigator.geolocation) {
-      toast({
-        title: "GPS não disponível",
-        description: "Seu dispositivo não suporta geolocalização.",
-        variant: "destructive",
-      });
-      return;
-    }
+    const cleanupExistingMap = () => {
+      // Clean up any existing markers and paths first
+      if (pathRef.current) {
+        try {
+          pathRef.current.remove();
+        } catch (e) {}
+        pathRef.current = null;
+      }
+      if (markerRef.current) {
+        try {
+          markerRef.current.remove();
+        } catch (e) {}
+        markerRef.current = null;
+      }
+      
+      // Clean up existing map instance
+      if (mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.off();
+          mapInstanceRef.current.remove();
+        } catch (e) {}
+        mapInstanceRef.current = null;
+      }
+      
+      // Clear the DOM container
+      if (mapRef.current) {
+        mapRef.current.innerHTML = '';
+        // Remove any existing Leaflet classes
+        mapRef.current.className = mapRef.current.className.replace(/leaflet-[^\s]*/g, '');
+      }
+    };
 
-    // Add a small delay to ensure the DOM element is fully rendered
-    const timer = setTimeout(() => {
-      if (!mapRef.current || mapInstanceRef.current) return;
+    const initializeMap = async () => {
+      if (isCleaningUp || !mapRef.current) return;
+
+      // Check geolocation availability
+      if (!navigator.geolocation) {
+        toast({
+          title: "GPS não disponível",
+          description: "Seu dispositivo não suporta geolocalização.",
+          variant: "destructive",
+        });
+        return;
+      }
 
       try {
-        // Initialize map centered on default location (São Paulo, Brazil)
-        const map = L.map(mapRef.current, {
+        // Ensure clean state
+        cleanupExistingMap();
+        
+        if (isCleaningUp) return;
+
+        // Wait a bit for DOM to be ready
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        if (isCleaningUp || !mapRef.current) return;
+
+        // Create new map instance
+        mapInstance = L.map(mapRef.current, {
           center: [-23.5505, -46.6333],
           zoom: 13,
           zoomControl: true,
           scrollWheelZoom: true,
           doubleClickZoom: true,
           boxZoom: true,
-          trackResize: true
+          trackResize: true,
+          zoomAnimation: false, // Disable animations to prevent rendering issues
+          fadeAnimation: false,
+          markerZoomAnimation: false,
+          preferCanvas: true // Use canvas for better performance
         });
+
+        if (isCleaningUp) {
+          mapInstance.remove();
+          return;
+        }
         
+        // Add tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '© OpenStreetMap contributors',
           maxZoom: 19,
-          minZoom: 3
-        }).addTo(map);
+          minZoom: 3,
+          updateWhenIdle: true,
+          updateWhenZooming: false,
+          keepBuffer: 1
+        }).addTo(mapInstance);
 
-        mapInstanceRef.current = map;
-
-        // Force map resize after initialization
-        setTimeout(() => {
-          if (mapInstanceRef.current) {
-            mapInstanceRef.current.invalidateSize();
-          }
-        }, 100);
+        if (!isCleaningUp) {
+          mapInstanceRef.current = mapInstance;
+          
+          // Force size invalidation
+          setTimeout(() => {
+            if (!isCleaningUp && mapInstanceRef.current) {
+              mapInstanceRef.current.invalidateSize();
+            }
+          }, 100);
+        }
 
       } catch (error) {
-        console.error('Error initializing map:', error);
-        toast({
-          title: "Erro no mapa",
-          description: "Não foi possível carregar o mapa. Tente recarregar a página.",
-          variant: "destructive",
-        });
+        console.error('Map initialization error:', error);
+        if (!isCleaningUp) {
+          toast({
+            title: "Erro no mapa",
+            description: "Falha ao carregar o mapa. Tente recarregar a página.",
+            variant: "destructive",
+          });
+        }
       }
-    }, 100);
+    };
+
+    // Start initialization
+    const timeoutId = setTimeout(initializeMap, 100);
 
     return () => {
-      clearTimeout(timer);
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
+      isCleaningUp = true;
+      clearTimeout(timeoutId);
+      cleanupExistingMap();
     };
   }, []);
 
@@ -606,12 +666,10 @@ export default function RunningPage() {
           <CardContent className="p-0">
             <div 
               ref={mapRef} 
-              className="w-full h-64 rounded-lg relative overflow-hidden"
+              className="w-full h-64 rounded-lg relative overflow-hidden map-container"
               style={{ 
                 minHeight: '256px',
-                height: '256px',
-                zIndex: 1,
-                position: 'relative'
+                height: '256px'
               }}
             />
           </CardContent>
