@@ -4,6 +4,7 @@
  */
 
 export type UserPlan = 'free' | 'premium' | 'vip';
+export type PlanTier = UserPlan; // Alias for consistency across client/server
 
 export interface PlanLimits {
   // AI Analysis

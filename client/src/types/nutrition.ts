@@ -1,3 +1,5 @@
+import { PlanTier } from '@shared/plans';
+
 export interface UserProfile {
   id?: string;
   firstName?: string;
@@ -10,6 +12,7 @@ export interface UserProfile {
   fitnessGoal: 'lose' | 'maintain' | 'gain';
   bmr?: number;
   dailyCalorieGoal?: number;
+  plan?: PlanTier;
 }
 
 export interface MacroTargets {

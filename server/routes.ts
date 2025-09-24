@@ -70,8 +70,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User profile routes
   app.get('/api/user/profile', async (req: any, res) => {
     try {
-      // Return current user profile (updated by POST endpoint)
-      res.json(currentUserProfile);
+      // Get user from database to include plan information
+      const user = await storage.getUserWithSubscription("user-1");
+      
+      // Normalize plan to prevent client crashes - ensure only valid plans are returned
+      const normalizePlan = (rawPlan: any): 'free' | 'premium' | 'vip' => {
+        const validPlans = ['free', 'premium', 'vip'] as const;
+        return validPlans.includes(rawPlan) ? rawPlan : 'free';
+      };
+      
+      if (user) {
+        const profileWithPlan = {
+          ...currentUserProfile,
+          plan: normalizePlan(user.plan)
+        };
+        res.json(profileWithPlan);
+      } else {
+        // Return current user profile with default plan
+        res.json({
+          ...currentUserProfile,
+          plan: 'free' as const
+        });
+      }
     } catch (error) {
       console.error("Error fetching user profile:", error);
       res.status(500).json({ message: "Failed to fetch user profile" });
