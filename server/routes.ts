@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import multer from "multer";
 import { storage } from "./storage";
 import { analyzeFoodImage } from "./services/openai";
+import { openFoodFactsService } from "./services/openfoodfacts";
 import { 
   calculateBMR, 
   calculateDailyCalorieGoal, 
@@ -10,7 +11,18 @@ import {
   calculateNutritionTotals,
   validateNutritionParams 
 } from "./services/nutrition";
-import { userProfileSchema, insertFoodSchema, insertMealEntrySchema, mealEntries, exercises, activityEntries } from "@shared/schema";
+import { 
+  userProfileSchema, 
+  insertFoodSchema, 
+  insertMealEntrySchema, 
+  mealEntries, 
+  exercises, 
+  activityEntries,
+  recipeSchema,
+  recipeIngredientSchema,
+  foodSearchSchema,
+  barcodeSchema
+} from "@shared/schema";
 import { db } from "./db";
 import { calculateCaloriesBurned, searchExercises, validateActivityData, commonExercises } from "./services/activity";
 
@@ -461,6 +473,223 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting activity:", error);
       res.status(500).json({ message: "Failed to delete activity" });
+    }
+  });
+
+  // Food search routes
+  app.get('/api/food/search', async (req, res) => {
+    try {
+      const { q: query, limit } = req.query;
+      
+      if (!query || typeof query !== 'string') {
+        return res.status(400).json({ message: "Query parameter is required" });
+      }
+
+      const validatedQuery = foodSearchSchema.parse({ 
+        query, 
+        limit: limit ? parseInt(limit as string) : undefined 
+      });
+      
+      // Search in local database first
+      const localResults = await storage.searchFoods(validatedQuery.query, validatedQuery.limit);
+      
+      // If we have less than the limit from local search, search OpenFoodFacts
+      let externalResults: any[] = [];
+      if (localResults.length < validatedQuery.limit) {
+        const remainingLimit = validatedQuery.limit - localResults.length;
+        const openFoodFactsResults = await openFoodFactsService.searchByName(validatedQuery.query, remainingLimit);
+        
+        // Save external results to local database for future searches and get proper IDs
+        for (const externalFood of openFoodFactsResults) {
+          try {
+            const savedFood = await storage.createFood(externalFood);
+            externalResults.push(savedFood);
+          } catch (error) {
+            // If food already exists, try to find it by name and barcode
+            console.log("Food might already exist, attempting to find existing:", error);
+            try {
+              if (externalFood.barcode) {
+                const existingFood = await storage.getFoodByBarcode(externalFood.barcode);
+                if (existingFood) {
+                  externalResults.push(existingFood);
+                }
+              }
+            } catch (findError) {
+              console.log("Could not find existing food:", findError);
+            }
+          }
+        }
+      }
+      
+      // Combine and return results
+      const allResults = [...localResults, ...externalResults];
+      res.json(allResults.slice(0, validatedQuery.limit));
+    } catch (error) {
+      console.error("Error searching foods:", error);
+      res.status(500).json({ message: "Failed to search foods" });
+    }
+  });
+
+  app.post('/api/food/barcode', async (req, res) => {
+    try {
+      const { barcode } = barcodeSchema.parse(req.body);
+      
+      // Check if we already have this barcode in our database
+      let food = await storage.getFoodByBarcode(barcode);
+      
+      if (!food) {
+        // Search OpenFoodFacts for the barcode
+        const externalFood = await openFoodFactsService.searchByBarcode(barcode);
+        
+        if (externalFood) {
+          // Save to local database
+          food = await storage.createFood(externalFood);
+        }
+      }
+      
+      if (food) {
+        res.json(food);
+      } else {
+        res.status(404).json({ message: "Food not found for this barcode" });
+      }
+    } catch (error) {
+      console.error("Error searching barcode:", error);
+      res.status(500).json({ message: "Failed to search barcode" });
+    }
+  });
+
+  // Recipe routes
+  app.get('/api/recipes', async (req, res) => {
+    try {
+      const mockUserId = "user-1";
+      const recipes = await storage.getUserRecipes(mockUserId);
+      res.json(recipes);
+    } catch (error) {
+      console.error("Error fetching recipes:", error);
+      res.status(500).json({ message: "Failed to fetch recipes" });
+    }
+  });
+
+  app.get('/api/recipes/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const recipe = await storage.getRecipeWithIngredients(id);
+      
+      if (recipe) {
+        res.json(recipe);
+      } else {
+        res.status(404).json({ message: "Recipe not found" });
+      }
+    } catch (error) {
+      console.error("Error fetching recipe:", error);
+      res.status(500).json({ message: "Failed to fetch recipe" });
+    }
+  });
+
+  app.post('/api/recipes', async (req, res) => {
+    try {
+      const mockUserId = "user-1";
+      const recipeData = recipeSchema.parse({
+        ...req.body,
+        userId: mockUserId
+      });
+
+      const recipe = await storage.createRecipe(recipeData);
+      res.json(recipe);
+    } catch (error) {
+      console.error("Error creating recipe:", error);
+      res.status(400).json({ message: "Invalid recipe data" });
+    }
+  });
+
+  app.put('/api/recipes/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = recipeSchema.partial().parse(req.body);
+      
+      const recipe = await storage.updateRecipe(id, updates);
+      res.json(recipe);
+    } catch (error) {
+      console.error("Error updating recipe:", error);
+      res.status(400).json({ message: "Invalid recipe data" });
+    }
+  });
+
+  app.delete('/api/recipes/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const mockUserId = "user-1";
+      
+      const success = await storage.deleteRecipe(id, mockUserId);
+      if (success) {
+        res.json({ message: "Recipe deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Recipe not found" });
+      }
+    } catch (error) {
+      console.error("Error deleting recipe:", error);
+      res.status(500).json({ message: "Failed to delete recipe" });
+    }
+  });
+
+  // Recipe ingredient routes
+  app.get('/api/recipes/:id/ingredients', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const ingredients = await storage.getRecipeIngredients(id);
+      res.json(ingredients);
+    } catch (error) {
+      console.error("Error fetching recipe ingredients:", error);
+      res.status(500).json({ message: "Failed to fetch recipe ingredients" });
+    }
+  });
+
+  app.post('/api/recipes/:id/ingredients', async (req, res) => {
+    try {
+      const { id: recipeId } = req.params;
+      const ingredientData = recipeIngredientSchema.parse({
+        ...req.body,
+        recipeId
+      });
+
+      const ingredient = await storage.addRecipeIngredient(ingredientData);
+      res.json(ingredient);
+    } catch (error) {
+      console.error("Error adding recipe ingredient:", error);
+      res.status(400).json({ message: "Invalid ingredient data" });
+    }
+  });
+
+  app.put('/api/recipe-ingredients/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { quantity } = req.body;
+      
+      if (typeof quantity !== 'number' || quantity <= 0) {
+        return res.status(400).json({ message: "Valid quantity is required" });
+      }
+
+      const ingredient = await storage.updateRecipeIngredient(id, quantity);
+      res.json(ingredient);
+    } catch (error) {
+      console.error("Error updating recipe ingredient:", error);
+      res.status(400).json({ message: "Failed to update ingredient" });
+    }
+  });
+
+  app.delete('/api/recipe-ingredients/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const success = await storage.deleteRecipeIngredient(id);
+      if (success) {
+        res.json({ message: "Ingredient removed successfully" });
+      } else {
+        res.status(404).json({ message: "Ingredient not found" });
+      }
+    } catch (error) {
+      console.error("Error removing recipe ingredient:", error);
+      res.status(500).json({ message: "Failed to remove ingredient" });
     }
   });
 

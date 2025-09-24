@@ -54,6 +54,33 @@ export const foods = pgTable("foods", {
   fat: real("fat"), // grams
   imageUrl: varchar("image_url"),
   confidence: real("confidence"), // AI confidence score
+  barcode: varchar("barcode", { length: 50 }), // Barcode for external API lookup
+  source: varchar("source", { length: 20 }).default("ai"), // 'ai', 'manual', 'barcode', 'openfoodfacts'
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// User recipes
+export const recipes = pgTable("recipes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  servings: real("servings").notNull().default(1), // How many servings this recipe makes
+  totalCalories: real("total_calories").notNull(),
+  totalCarbs: real("total_carbs"),
+  totalProtein: real("total_protein"),
+  totalFat: real("total_fat"),
+  imageUrl: varchar("image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Recipe ingredients - links recipes to foods with quantities
+export const recipeIngredients = pgTable("recipe_ingredients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipeId: varchar("recipe_id").notNull().references(() => recipes.id, { onDelete: 'cascade' }),
+  foodId: varchar("food_id").notNull().references(() => foods.id),
+  quantity: real("quantity").notNull(), // serving multiplier for this ingredient
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -62,6 +89,7 @@ export const mealEntries = pgTable("meal_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
   foodId: varchar("food_id").references(() => foods.id),
+  recipeId: varchar("recipe_id").references(() => recipes.id), // Reference to user recipe
   mealType: varchar("meal_type", { length: 20 }).notNull(), // 'breakfast', 'lunch', 'dinner', 'snack'
   date: timestamp("date").notNull(),
   quantity: real("quantity").default(1), // serving multiplier
@@ -118,6 +146,32 @@ export const userRelations = relations(users, ({ many }) => ({
   mealEntries: many(mealEntries),
   dailySummaries: many(dailySummaries),
   activityEntries: many(activityEntries),
+  recipes: many(recipes),
+}));
+
+export const recipeRelations = relations(recipes, ({ one, many }) => ({
+  user: one(users, {
+    fields: [recipes.userId],
+    references: [users.id],
+  }),
+  ingredients: many(recipeIngredients),
+  mealEntries: many(mealEntries),
+}));
+
+export const recipeIngredientRelations = relations(recipeIngredients, ({ one }) => ({
+  recipe: one(recipes, {
+    fields: [recipeIngredients.recipeId],
+    references: [recipes.id],
+  }),
+  food: one(foods, {
+    fields: [recipeIngredients.foodId],
+    references: [foods.id],
+  }),
+}));
+
+export const foodRelations = relations(foods, ({ many }) => ({
+  mealEntries: many(mealEntries),
+  recipeIngredients: many(recipeIngredients),
 }));
 
 export const mealEntryRelations = relations(mealEntries, ({ one }) => ({
@@ -128,6 +182,10 @@ export const mealEntryRelations = relations(mealEntries, ({ one }) => ({
   food: one(foods, {
     fields: [mealEntries.foodId],
     references: [foods.id],
+  }),
+  recipe: one(recipes, {
+    fields: [mealEntries.recipeId],
+    references: [recipes.id],
   }),
 }));
 
@@ -189,11 +247,41 @@ export const insertDailySummarySchema = createInsertSchema(dailySummaries).omit(
   updatedAt: true,
 });
 
+export const insertRecipeSchema = createInsertSchema(recipes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertRecipeIngredientSchema = createInsertSchema(recipeIngredients).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Enhanced schemas with additional validation
 export const activityEntrySchema = insertActivityEntrySchema.extend({
   duration: z.number().min(1).max(1440), // 1 minute to 24 hours
   intensity: z.enum(['light', 'moderate', 'vigorous']),
   caloriesBurned: z.number().min(0),
+});
+
+export const recipeSchema = insertRecipeSchema.extend({
+  name: z.string().min(1).max(200),
+  servings: z.number().min(0.1).max(50),
+  totalCalories: z.number().min(0),
+});
+
+export const recipeIngredientSchema = insertRecipeIngredientSchema.extend({
+  quantity: z.number().min(0.01),
+});
+
+export const foodSearchSchema = z.object({
+  query: z.string().min(1).max(100),
+  limit: z.number().min(1).max(50).optional().default(20),
+});
+
+export const barcodeSchema = z.object({
+  barcode: z.string().min(8).max(50),
 });
 
 // Types
@@ -216,3 +304,17 @@ export type InsertActivityEntry = z.infer<typeof insertActivityEntrySchema>;
 
 export type DailySummary = typeof dailySummaries.$inferSelect;
 export type InsertDailySummary = z.infer<typeof insertDailySummarySchema>;
+
+export type Recipe = typeof recipes.$inferSelect;
+export type InsertRecipe = z.infer<typeof insertRecipeSchema>;
+
+export type RecipeIngredient = typeof recipeIngredients.$inferSelect;
+export type InsertRecipeIngredient = z.infer<typeof insertRecipeIngredientSchema>;
+
+// Additional types for API responses
+export type RecipeWithIngredients = Recipe & {
+  ingredients: (RecipeIngredient & { food: Food })[];
+};
+
+export type FoodSearchResult = Food;
+export type BarcodeSearchResult = Food;

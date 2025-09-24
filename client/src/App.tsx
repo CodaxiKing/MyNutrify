@@ -17,6 +17,7 @@ import RunningPage from "@/pages/running";
 import Diary from "@/pages/diary";
 import CalendarPage from "@/pages/calendar";
 import ProfileSetup from "@/pages/profile-setup";
+import Precision from "@/pages/precision";
 
 // Hooks
 import { useUserProfile } from "@/hooks/use-user-profile";
@@ -43,6 +44,8 @@ function AppContent() {
         return <Dashboard />;
       case 'camera':
         return <CameraPage />;
+      case 'precision':
+        return <Precision />;
       case 'running':
         return <RunningPage />;
       case 'diary':

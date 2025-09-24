@@ -6,7 +6,8 @@ import {
   Coffee,
   Utensils,
   Apple,
-  MapPin
+  MapPin,
+  Target
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -19,6 +20,7 @@ export function TabNavigation({ activeTab, onTabChange }: TabNavigationProps) {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { id: 'camera', label: 'Scan Food', icon: Camera },
+    { id: 'precision', label: 'Precisão', icon: Target },
     { id: 'running', label: 'Running', icon: MapPin },
     { id: 'diary', label: 'Food Diary', icon: BookOpen },
     { id: 'calendar', label: 'Calendar', icon: Calendar },

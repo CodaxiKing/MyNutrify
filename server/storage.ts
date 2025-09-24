@@ -5,6 +5,8 @@ import {
   dailySummaries,
   exercises,
   activityEntries,
+  recipes,
+  recipeIngredients,
   type User,
   type UpsertUser,
   type UserProfile,
@@ -18,6 +20,11 @@ import {
   type InsertExercise,
   type ActivityEntry,
   type InsertActivityEntry,
+  type Recipe,
+  type InsertRecipe,
+  type RecipeIngredient,
+  type InsertRecipeIngredient,
+  type RecipeWithIngredients,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, asc, gte, lte, sql } from "drizzle-orm";
@@ -31,6 +38,8 @@ export interface IStorage {
   // Food operations
   createFood(food: InsertFood): Promise<Food>;
   getFoodById(id: string): Promise<Food | undefined>;
+  searchFoods(query: string, limit?: number): Promise<Food[]>;
+  getFoodByBarcode(barcode: string): Promise<Food | undefined>;
   
   // Meal operations
   createMealEntry(entry: InsertMealEntry): Promise<MealEntry>;
@@ -54,6 +63,20 @@ export interface IStorage {
   getDailySummary(userId: string, date: Date): Promise<DailySummary | undefined>;
   upsertDailySummary(summary: InsertDailySummary): Promise<DailySummary>;
   getDailySummariesForRange(userId: string, startDate: Date, endDate: Date): Promise<DailySummary[]>;
+
+  // Recipe operations
+  createRecipe(recipe: InsertRecipe): Promise<Recipe>;
+  getRecipeById(id: string): Promise<Recipe | undefined>;
+  getRecipeWithIngredients(id: string): Promise<RecipeWithIngredients | undefined>;
+  getUserRecipes(userId: string): Promise<Recipe[]>;
+  updateRecipe(id: string, recipe: Partial<InsertRecipe>): Promise<Recipe>;
+  deleteRecipe(id: string, userId: string): Promise<boolean>;
+
+  // Recipe ingredient operations
+  addRecipeIngredient(ingredient: InsertRecipeIngredient): Promise<RecipeIngredient>;
+  updateRecipeIngredient(id: string, quantity: number): Promise<RecipeIngredient>;
+  deleteRecipeIngredient(id: string): Promise<boolean>;
+  getRecipeIngredients(recipeId: string): Promise<(RecipeIngredient & { food: Food })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -98,6 +121,21 @@ export class DatabaseStorage implements IStorage {
 
   async getFoodById(id: string): Promise<Food | undefined> {
     const [food] = await db.select().from(foods).where(eq(foods.id, id));
+    return food;
+  }
+
+  async searchFoods(query: string, limit: number = 20): Promise<Food[]> {
+    const lowerQuery = query.toLowerCase();
+    return await db
+      .select()
+      .from(foods)
+      .where(sql`LOWER(${foods.name}) LIKE ${'%' + lowerQuery + '%'}`)
+      .orderBy(asc(foods.name))
+      .limit(limit);
+  }
+
+  async getFoodByBarcode(barcode: string): Promise<Food | undefined> {
+    const [food] = await db.select().from(foods).where(eq(foods.barcode, barcode));
     return food;
   }
 
@@ -298,6 +336,93 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .orderBy(asc(dailySummaries.date));
+  }
+
+  // Recipe operations
+  async createRecipe(recipe: InsertRecipe): Promise<Recipe> {
+    const [createdRecipe] = await db
+      .insert(recipes)
+      .values(recipe)
+      .returning();
+    return createdRecipe;
+  }
+
+  async getRecipeById(id: string): Promise<Recipe | undefined> {
+    const [recipe] = await db.select().from(recipes).where(eq(recipes.id, id));
+    return recipe;
+  }
+
+  async getRecipeWithIngredients(id: string): Promise<RecipeWithIngredients | undefined> {
+    const recipe = await this.getRecipeById(id);
+    if (!recipe) return undefined;
+
+    const ingredients = await this.getRecipeIngredients(id);
+    return { ...recipe, ingredients };
+  }
+
+  async getUserRecipes(userId: string): Promise<Recipe[]> {
+    return await db
+      .select()
+      .from(recipes)
+      .where(eq(recipes.userId, userId))
+      .orderBy(desc(recipes.createdAt));
+  }
+
+  async updateRecipe(id: string, recipeData: Partial<InsertRecipe>): Promise<Recipe> {
+    const [updated] = await db
+      .update(recipes)
+      .set({ ...recipeData, updatedAt: new Date() })
+      .where(eq(recipes.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteRecipe(id: string, userId: string): Promise<boolean> {
+    const result = await db
+      .delete(recipes)
+      .where(and(eq(recipes.id, id), eq(recipes.userId, userId)));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  // Recipe ingredient operations
+  async addRecipeIngredient(ingredient: InsertRecipeIngredient): Promise<RecipeIngredient> {
+    const [created] = await db
+      .insert(recipeIngredients)
+      .values(ingredient)
+      .returning();
+    return created;
+  }
+
+  async updateRecipeIngredient(id: string, quantity: number): Promise<RecipeIngredient> {
+    const [updated] = await db
+      .update(recipeIngredients)
+      .set({ quantity })
+      .where(eq(recipeIngredients.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteRecipeIngredient(id: string): Promise<boolean> {
+    const result = await db
+      .delete(recipeIngredients)
+      .where(eq(recipeIngredients.id, id));
+    return result.rowCount ? result.rowCount > 0 : false;
+  }
+
+  async getRecipeIngredients(recipeId: string): Promise<(RecipeIngredient & { food: Food })[]> {
+    return await db
+      .select({
+        id: recipeIngredients.id,
+        recipeId: recipeIngredients.recipeId,
+        foodId: recipeIngredients.foodId,
+        quantity: recipeIngredients.quantity,
+        createdAt: recipeIngredients.createdAt,
+        food: foods,
+      })
+      .from(recipeIngredients)
+      .innerJoin(foods, eq(recipeIngredients.foodId, foods.id))
+      .where(eq(recipeIngredients.recipeId, recipeId))
+      .orderBy(asc(recipeIngredients.createdAt));
   }
 }
 
