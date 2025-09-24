@@ -14,7 +14,7 @@ import { useUserProfile } from "@/hooks/use-user-profile";
 import { useActivitiesForDate } from "@/hooks/use-nutrition-data";
 
 // Import GPS utilities and running tracker
-import { GPSTracker, RunningTracker, type RunningState, type UserRunningProfile } from "@/lib/gps-utils";
+import { GPSTracker, NRCRunningTracker as RunningTracker, type UserRunningProfile, type GPSStatus, type RunSession } from "@/lib/gps-utils";
 
 type ActivityMode = 'menu' | 'running' | 'exercises';
 
@@ -30,8 +30,21 @@ export default function ActivitiesPage() {
   const watchIdRef = useRef<number | null>(null);
   
   const [mode, setMode] = useState<ActivityMode>('menu');
-  const [runningTracker] = useState(new RunningTracker());
-  const [runningState, setRunningState] = useState<RunningState>({
+  const [runningTracker] = useState(new RunningTracker('km'));
+  const [gpsTracker] = useState(new GPSTracker());
+  const [runningState, setRunningState] = useState<{
+    status: 'stopped' | 'running' | 'paused';
+    stats: {
+      distance: number;
+      duration: number;
+      avgSpeed: number;
+      avgPace: number;
+      calories: number;
+      currentPace: number;
+      elevationGain: number;
+      coordinatesCount: number;
+    }
+  }>({
     status: 'stopped',
     stats: {
       distance: 0,
@@ -39,11 +52,19 @@ export default function ActivitiesPage() {
       avgSpeed: 0,
       avgPace: 0,
       calories: 0,
+      currentPace: 0,
+      elevationGain: 0,
       coordinatesCount: 0,
     }
   });
 
-  const [hasLocationPermission, setHasLocationPermission] = useState<boolean | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<GPSStatus>({
+    isAvailable: false,
+    hasPermission: false,
+    isTracking: false,
+    lastUpdate: null,
+    signalQuality: 'unavailable'
+  });
   const [currentLocation, setCurrentLocation] = useState<{lat: number, lon: number} | null>(null);
 
   // Create user profile for calculations
@@ -96,35 +117,34 @@ export default function ActivitiesPage() {
   useEffect(() => {
     if (mode !== 'running') return;
 
-    const getCurrentLocation = () => {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          setCurrentLocation({ lat: latitude, lon: longitude });
-          setHasLocationPermission(true);
+    const getCurrentLocation = async () => {
+      try {
+        setGpsStatus(gpsTracker.getStatus());
+        
+        const position = await gpsTracker.getCurrentPosition();
+        setCurrentLocation({ lat: position.lat, lon: position.lon });
+        setGpsStatus(gpsTracker.getStatus());
+        
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.setView([position.lat, position.lon], 16);
           
-          if (mapInstanceRef.current) {
-            mapInstanceRef.current.setView([latitude, longitude], 16);
-            
-            if (markerRef.current) {
-              markerRef.current.remove();
-            }
-            
-            markerRef.current = L.marker([latitude, longitude])
-              .addTo(mapInstanceRef.current)
-              .bindPopup('Sua localização atual');
+          if (markerRef.current) {
+            markerRef.current.remove();
           }
-        },
-        (error) => {
-          console.error('Geolocation error:', error);
-          setHasLocationPermission(false);
-          toast({
-            title: "Permissão de localização negada",
-            description: "Por favor, permita acesso à localização para usar o rastreamento de corrida.",
-            variant: "destructive",
-          });
+          
+          markerRef.current = L.marker([position.lat, position.lon])
+            .addTo(mapInstanceRef.current)
+            .bindPopup('Sua localização atual');
         }
-      );
+      } catch (error: any) {
+        console.error('Geolocation error:', error);
+        setGpsStatus(gpsTracker.getStatus());
+        toast({
+          title: "Erro de localização",
+          description: error.message || "Não foi possível acessar sua localização.",
+          variant: "destructive",
+        });
+      }
     };
 
     getCurrentLocation();
@@ -132,7 +152,7 @@ export default function ActivitiesPage() {
 
   // Running controls
   const startRun = () => {
-    if (!hasLocationPermission) {
+    if (!gpsStatus.hasPermission) {
       toast({
         title: "Permissão necessária",
         description: "Acesso à localização é necessário para rastreamento.",
@@ -141,7 +161,7 @@ export default function ActivitiesPage() {
       return;
     }
 
-    runningTracker.startRun(userRunningProfile);
+    runningTracker.start();
     setRunningState(prev => ({ ...prev, status: 'running' }));
 
     watchIdRef.current = navigator.geolocation.watchPosition(
@@ -149,9 +169,21 @@ export default function ActivitiesPage() {
         const { latitude, longitude } = position.coords;
         const newCoords: [number, number] = [latitude, longitude];
         
-        runningTracker.addPoint({ lat: latitude, lon: longitude });
+        runningTracker.addSample({ lat: latitude, lon: longitude, timestamp: Date.now() });
         const stats = runningTracker.getStats(userRunningProfile);
-        setRunningState(prev => ({ ...prev, stats }));
+        setRunningState(prev => ({ 
+          ...prev, 
+          stats: {
+            distance: stats.distance,
+            duration: stats.duration,
+            avgSpeed: stats.avgSpeed,
+            avgPace: stats.avgPace,
+            calories: stats.calories,
+            currentPace: stats.currentPace,
+            elevationGain: stats.elevationGain,
+            coordinatesCount: stats.coordinatesCount
+          }
+        }));
 
         if (mapInstanceRef.current) {
           if (pathRef.current) {
@@ -187,7 +219,7 @@ export default function ActivitiesPage() {
   };
 
   const pauseRun = () => {
-    runningTracker.pauseRun();
+    runningTracker.pause();
     setRunningState(prev => ({ ...prev, status: 'paused' }));
 
     if (watchIdRef.current) {
@@ -197,13 +229,14 @@ export default function ActivitiesPage() {
   };
 
   const resumeRun = () => {
-    runningTracker.resumeRun();
+    runningTracker.resume();
     setRunningState(prev => ({ ...prev, status: 'running' }));
     startRun(); // Resume tracking
   };
 
   const stopRun = async () => {
-    const finalStats = runningTracker.stopRun();
+    const session = runningTracker.stop();
+    const finalStats = runningTracker.getStats(userRunningProfile);
     setRunningState(prev => ({ ...prev, status: 'stopped', stats: finalStats }));
 
     if (watchIdRef.current) {

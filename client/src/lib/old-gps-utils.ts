@@ -1,5 +1,5 @@
 /**
- * Nike Run Club-style GPS utilities for advanced running tracking
+ * Advanced GPS utilities for Nike Run Club-style running tracking
  * Features: Auto-splits, pace smoothing, elevation tracking, real-time analytics
  */
 
@@ -74,7 +74,7 @@ export interface GPSOptions {
 
 export interface GPSStatus {
   isAvailable: boolean;
-  hasPermission: boolean | null;
+  hasPermission: boolean;
   isTracking: boolean;
   lastUpdate: number | null;
   signalQuality: 'excellent' | 'good' | 'fair' | 'poor' | 'unavailable';
@@ -200,29 +200,38 @@ export function formatDuration(totalMinutes: number): string {
 }
 
 /**
+ * State interface for running tracker
+ */
+export interface RunningState {
+  status: 'stopped' | 'running' | 'paused';
+  stats: RunningStats;
+}
+
+/**
  * Enhanced GPS Tracker class with better error handling and configuration
  */
 export class GPSTracker {
   private status: GPSStatus = {
     isAvailable: false,
-    hasPermission: null,
+    hasPermission: false,
     isTracking: false,
     lastUpdate: null,
     signalQuality: 'unavailable'
   };
 
+  private lastAcceptedPosition: GPSCoordinate | null = null;
+
   private defaultOptions: GPSOptions = {
     enableHighAccuracy: true,
-    timeout: 15000,
-    maximumAge: 1000,
-    distanceFilter: 3,
-    accuracyThreshold: 20
+    timeout: 15000, // Increased timeout
+    maximumAge: 1000, // Reduced maximum age for fresher positions
+    distanceFilter: 3, // Minimum 3 meters movement
+    accuracyThreshold: 20 // Maximum 20 meters accuracy
   };
 
   private retryCount = 0;
   private maxRetries = 3;
   private retryDelay = 2000;
-  private lastAcceptedPosition: GPSCoordinate | null = null;
 
   constructor() {
     this.status.isAvailable = !!navigator.geolocation;
@@ -242,6 +251,7 @@ export class GPSTracker {
 
   async getCurrentPosition(options?: Partial<GPSOptions>): Promise<GPSCoordinate> {
     const gpsOptions = { ...this.defaultOptions, ...options };
+    
     return this.attemptGetPosition(gpsOptions);
   }
 
@@ -261,17 +271,21 @@ export class GPSTracker {
           clearTimeout(timeoutId);
           const coords = position.coords;
           
+          // Validate accuracy
           if (coords.accuracy > options.accuracyThreshold) {
             if (this.retryCount < this.maxRetries) {
               this.retryCount++;
+              console.warn(`GPS accuracy too low (${coords.accuracy}m), retrying... (${this.retryCount}/${this.maxRetries})`);
               setTimeout(() => {
                 this.attemptGetPosition(options).then(resolve).catch(reject);
               }, this.retryDelay);
               return;
+            } else {
+              console.warn(`GPS accuracy still low after ${this.maxRetries} retries, accepting position`);
             }
           }
 
-          this.retryCount = 0;
+          this.retryCount = 0; // Reset retry count on success
           this.status.hasPermission = true;
           this.status.lastUpdate = Date.now();
           this.status.signalQuality = this.getSignalQuality(coords.accuracy);
@@ -293,6 +307,7 @@ export class GPSTracker {
           
           if (this.retryCount < this.maxRetries) {
             this.retryCount++;
+            console.warn(`GPS error, retrying... (${this.retryCount}/${this.maxRetries}):`, error.message);
             setTimeout(() => {
               this.attemptGetPosition(options).then(resolve).catch(reject);
             }, this.retryDelay);
@@ -303,7 +318,7 @@ export class GPSTracker {
         },
         {
           enableHighAccuracy: options.enableHighAccuracy,
-          timeout: options.timeout - 1000,
+          timeout: options.timeout - 1000, // Leave some buffer for our own timeout
           maximumAge: options.maximumAge
         }
       );
@@ -321,6 +336,7 @@ export class GPSTracker {
         this.status.isAvailable = false;
         break;
       case error.TIMEOUT:
+        // Timeout handled by retry logic
         break;
     }
   }
@@ -350,7 +366,9 @@ export class GPSTracker {
       (position) => {
         const coords = position.coords;
         
+        // Filter by accuracy
         if (coords.accuracy > gpsOptions.accuracyThreshold) {
+          console.warn(`Skipping position with low accuracy: ${coords.accuracy}m`);
           return;
         }
 
@@ -372,24 +390,30 @@ export class GPSTracker {
             gpsCoord.lon
           );
           
+          // Convert to meters and check minimum distance
           if (distance * 1000 < gpsOptions.distanceFilter) {
+            console.log(`Skipping position - distance ${(distance * 1000).toFixed(1)}m < ${gpsOptions.distanceFilter}m filter`);
             return;
           }
         }
 
+        // Update status
         this.status.lastUpdate = Date.now();
         this.status.signalQuality = this.getSignalQuality(coords.accuracy);
-        this.status.hasPermission = true;
+        this.status.hasPermission = true; // Update on successful position
         this.lastAcceptedPosition = gpsCoord;
 
         callback(gpsCoord);
       },
       (error) => {
+        // Don't mark GPS as unavailable for transient errors
         if (error.code !== error.POSITION_UNAVAILABLE) {
           this.handleLocationError(error);
         } else {
           this.status.signalQuality = 'unavailable';
+          console.warn('GPS position temporarily unavailable');
         }
+        console.error('GPS watching error:', this.getLocalizedError(error).message);
       },
       {
         enableHighAccuracy: gpsOptions.enableHighAccuracy,
@@ -400,7 +424,7 @@ export class GPSTracker {
   }
 
   private calculateDistanceBetween(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371;
+    const R = 6371; // Earth's radius in kilometers
     const dLat = this.degToRad(lat2 - lat1);
     const dLon = this.degToRad(lon2 - lon1);
     const a = 
@@ -428,11 +452,11 @@ export class GPSTracker {
 export class NRCRunningTracker {
   private session: RunSession;
   private events: RunningEvents;
-  private paceWindow: number[] = [];
+  private paceWindow: number[] = []; // Rolling window for pace smoothing
   private lastSampleTime: number = 0;
   private gpsTracker: GPSTracker;
-  private readonly PACE_WINDOW_SIZE = 15;
-  private readonly MIN_ELEVATION_CHANGE = 3;
+  private readonly PACE_WINDOW_SIZE = 15; // seconds for pace smoothing
+  private readonly MIN_ELEVATION_CHANGE = 3; // meters minimum for elevation tracking
   
   constructor(unit: 'km' | 'mi' = 'km', events: RunningEvents = {}) {
     this.events = events;
@@ -440,7 +464,7 @@ export class NRCRunningTracker {
     this.session = {
       id: this.generateSessionId(),
       unit,
-      splitDistance: unit === 'km' ? 1 : 0.621371,
+      splitDistance: unit === 'km' ? 1 : 0.621371, // 1 km or 1 mile
       startedAt: 0,
       isPaused: false,
       totalPausedTime: 0,
@@ -461,13 +485,18 @@ export class NRCRunningTracker {
     return `run_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
+  /**
+   * Start new running session
+   */
   start(): void {
     const now = Date.now();
     
     if (this.session.startedAt === 0) {
+      // First time starting
       this.session.startedAt = now;
       this.lastSampleTime = now;
     } else if (this.session.isPaused) {
+      // Resume from pause
       const pauseDuration = now - this.lastSampleTime;
       this.session.totalPausedTime += pauseDuration;
       this.events.onResume?.();
@@ -476,6 +505,9 @@ export class NRCRunningTracker {
     this.session.isPaused = false;
   }
 
+  /**
+   * Pause running session
+   */
   pause(): void {
     if (!this.session.isPaused) {
       this.session.isPaused = true;
@@ -484,16 +516,25 @@ export class NRCRunningTracker {
     }
   }
 
+  /**
+   * Resume running session
+   */
   resume(): void {
     this.start();
   }
 
+  /**
+   * Stop running session and finalize
+   */
   stop(): RunSession {
     this.session.isPaused = true;
     this.updateTotals();
     return { ...this.session };
   }
 
+  /**
+   * Add GPS sample (NRC-style)
+   */
   addSample(coords: GPSCoordinate): void {
     if (this.session.isPaused || this.session.startedAt === 0) return;
 
@@ -530,13 +571,14 @@ export class NRCRunningTracker {
       accuracy: coords.accuracy
     };
 
+    // Calculate instant pace if we have a previous sample
     if (previousSample) {
-      const timeDiff = (timestamp - previousSample.timestamp) / 1000;
+      const timeDiff = (timestamp - previousSample.timestamp) / 1000; // seconds
       const distanceDiff = cumulativeDistance - previousSample.cumulativeDistance;
       
       if (timeDiff > 0 && distanceDiff > 0) {
         const speedKmh = (distanceDiff / timeDiff) * 3600;
-        sample.instantPace = speedKmh > 0 ? 60 / speedKmh : 0;
+        sample.instantPace = speedKmh > 0 ? 60 / speedKmh : 0; // min/km
       }
     }
 
@@ -544,11 +586,19 @@ export class NRCRunningTracker {
   }
 
   private isValidSample(sample: RunSample): boolean {
+    const previousSample = this.session.samples[this.session.samples.length - 1];
+    
+    if (!previousSample) return true;
+    
+    // Filter unrealistic speeds (>50 km/h)
     if (sample.instantPace && sample.instantPace > 0 && sample.instantPace < 1.2) {
+      console.warn('Unrealistic pace detected, skipping sample');
       return false;
     }
     
+    // Check accuracy threshold
     if (sample.accuracy && sample.accuracy > 30) {
+      console.warn('Low GPS accuracy, skipping sample:', sample.accuracy);
       return false;
     }
     
@@ -559,6 +609,7 @@ export class NRCRunningTracker {
     if (sample.instantPace) {
       this.paceWindow.push(sample.instantPace);
       
+      // Keep only recent samples (based on time window)
       const cutoffTime = sample.timestamp - (this.PACE_WINDOW_SIZE * 1000);
       const cutoffIndex = this.session.samples.findIndex(s => s.timestamp >= cutoffTime);
       
@@ -566,8 +617,9 @@ export class NRCRunningTracker {
         this.paceWindow = this.paceWindow.slice(this.paceWindow.length - (this.session.samples.length - cutoffIndex));
       }
       
+      // Calculate smoothed pace using exponential moving average
       if (this.paceWindow.length > 0) {
-        const alpha = 0.3;
+        const alpha = 0.3; // Smoothing factor
         const currentSmoothed = sample.smoothedPace || sample.instantPace;
         sample.smoothedPace = alpha * sample.instantPace + (1 - alpha) * currentSmoothed;
       }
@@ -587,6 +639,7 @@ export class NRCRunningTracker {
     const splitDistance = this.session.splitDistance;
     const targetDistance = lapIndex * splitDistance;
     
+    // Find start and end samples for this lap
     const startIdx = lapIndex === 1 ? 0 : this.session.laps[lapIndex - 2]?.endSampleIndex + 1 || 0;
     const endIdx = samples.findIndex(s => s.cumulativeDistance >= targetDistance);
     
@@ -600,7 +653,7 @@ export class NRCRunningTracker {
       startSampleIndex: startIdx,
       endSampleIndex: endIdx,
       distance: endSample.cumulativeDistance - startSample.cumulativeDistance,
-      duration: (endSample.timestamp - startSample.timestamp) / 1000,
+      duration: (endSample.timestamp - startSample.timestamp) / 1000, // seconds
       avgPace: 0,
       splitPace: 0,
       elevationGain: 0,
@@ -608,7 +661,9 @@ export class NRCRunningTracker {
       timestamp: endSample.timestamp
     };
     
+    // Calculate lap statistics
     this.calculateLapStats(lap);
+    
     this.session.laps.push(lap);
     this.events.onSplit?.(lap);
   }
@@ -618,10 +673,12 @@ export class NRCRunningTracker {
     
     if (samples.length < 2) return;
     
+    // Calculate average pace for this lap
     const speedKmh = (lap.distance / lap.duration) * 3600;
     lap.splitPace = speedKmh > 0 ? 60 / speedKmh : 0;
     lap.avgPace = lap.splitPace;
     
+    // Calculate elevation changes
     let elevationGain = 0;
     let elevationLoss = 0;
     
@@ -646,6 +703,79 @@ export class NRCRunningTracker {
     lap.elevationLoss = elevationLoss;
   }
 
+  /**
+   * Add GPS coordinate with enhanced validation
+   */
+  addCoordinate(lat: number, lon: number, accuracy?: number, speed?: number): number {
+    if (!this.isRunning) return this.totalDistance;
+
+    const coord: GPSCoordinate = { 
+      lat, 
+      lon, 
+      timestamp: Date.now(),
+      accuracy,
+      speed
+    };
+    
+    // Enhanced accuracy filtering
+    if (accuracy && accuracy > 30) {
+      console.warn('GPS accuracy too low:', accuracy, 'm - skipping coordinate');
+      return this.totalDistance;
+    }
+
+    // Validate coordinate ranges
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      console.warn('Invalid GPS coordinates:', lat, lon);
+      return this.totalDistance;
+    }
+
+    if (this.coordinates.length > 0) {
+      const lastCoord = this.coordinates[this.coordinates.length - 1];
+      const segmentDistance = calculateDistance(
+        lastCoord.lat, 
+        lastCoord.lon, 
+        lat, 
+        lon
+      );
+      
+      const timeDiff = (coord.timestamp! - lastCoord.timestamp!) / 1000; // seconds
+      
+      // Skip coordinates that are too close in time (< 1 second) and distance (< 2 meters)
+      if (timeDiff < 1 && segmentDistance < 0.002) {
+        return this.totalDistance;
+      }
+      
+      if (timeDiff > 0) {
+        const speedKmh = (segmentDistance / timeDiff) * 3600;
+        
+        // More realistic speed filtering with gradual limits
+        let maxRealisticSpeed = 60; // Base limit for running
+        
+        // Allow higher speeds for short bursts (GPS jumping)
+        if (timeDiff < 3) {
+          maxRealisticSpeed = 100;
+        } else if (timeDiff < 10) {
+          maxRealisticSpeed = 80;
+        }
+        
+        if (speedKmh <= maxRealisticSpeed) {
+          this.totalDistance += segmentDistance;
+        } else {
+          console.warn(`Unrealistic speed detected (${speedKmh.toFixed(1)} km/h), skipping coordinate`);
+          // Store the coordinate but don't add to distance
+          this.coordinates.push(coord);
+          return this.totalDistance;
+        }
+      }
+    }
+    
+    this.coordinates.push(coord);
+    return this.totalDistance;
+  }
+
+  /**
+   * Get current running statistics (NRC-style)
+   */
   getStats(userProfile: UserRunningProfile): RunningStats {
     this.updateTotals();
     
@@ -654,10 +784,14 @@ export class NRCRunningTracker {
     const duration = this.session.startedAt > 0 ? 
       (now - this.session.startedAt - this.session.totalPausedTime) / 1000 / 60 : 0;
     
+    // Calculate current smoothed pace
     const currentPace = currentSample?.smoothedPace || 0;
+    
+    // Calculate average pace
     const avgSpeed = duration > 0 ? (this.session.totals.distance / duration) * 60 : 0;
     const avgPace = avgSpeed > 0 ? 60 / avgSpeed : 0;
     
+    // Calculate calories
     const calories = duration > 0 ? 
       calculateRunningCalories(
         this.session.totals.distance, 
@@ -689,6 +823,7 @@ export class NRCRunningTracker {
     const lastSample = this.session.samples[this.session.samples.length - 1];
     this.session.totals.distance = lastSample.cumulativeDistance;
     
+    // Calculate total elevation changes
     let totalElevationGain = 0;
     let totalElevationLoss = 0;
     
@@ -713,22 +848,74 @@ export class NRCRunningTracker {
     this.session.totals.elevationLoss = totalElevationLoss;
   }
 
+  /**
+   * Calculate distance for a set of coordinates
+   */
+  private calculateDistanceForCoords(coords: GPSCoordinate[]): number {
+    let distance = 0;
+    for (let i = 1; i < coords.length; i++) {
+      distance += calculateDistance(
+        coords[i-1].lat,
+        coords[i-1].lon,
+        coords[i].lat,
+        coords[i].lon
+      );
+    }
+    return distance;
+  }
+
+  /**
+   * Get GPS signal quality
+   */
+  getGPSQuality(): GPSStatus['signalQuality'] {
+    return this.gpsTracker.getStatus().signalQuality;
+  }
+
+  /**
+   * Check if session is running
+   */
+  isRunning(): boolean {
+    return this.session.startedAt > 0 && !this.session.isPaused;
+  }
+
+  /**
+   * Check if session is paused
+   */
+  isPaused(): boolean {
+    return this.session.isPaused;
+  }
+
+  /**
+   * Get all samples for map display
+   */
   getSamples(): RunSample[] {
     return [...this.session.samples];
   }
 
+  /**
+   * Get path coordinates for map
+   */
   getPath(): Array<{lat: number, lon: number}> {
     return this.session.samples.map(s => ({ lat: s.lat, lon: s.lon }));
   }
 
+  /**
+   * Get all laps/splits
+   */
   getLaps(): RunLap[] {
     return [...this.session.laps];
   }
 
+  /**
+   * Get current session data
+   */
   getSession(): RunSession {
     return { ...this.session };
   }
 
+  /**
+   * Get split markers for map display
+   */
   getSplitMarkers(): Array<{lat: number, lon: number, distance: number, lapIndex: number}> {
     return this.session.laps.map(lap => {
       const sample = this.session.samples[lap.endSampleIndex];
@@ -741,6 +928,23 @@ export class NRCRunningTracker {
     });
   }
 
+  /**
+   * Get current position
+   */
+  getCurrentPosition(): GPSCoordinate | null {
+    return this.coordinates.length > 0 ? this.coordinates[this.coordinates.length - 1] : null;
+  }
+
+  /**
+   * Check if currently tracking
+   */
+  getIsRunning(): boolean {
+    return this.isRunning;
+  }
+
+  /**
+   * Reset session
+   */
   reset(): void {
     const unit = this.session.unit;
     this.session = {
@@ -765,42 +969,18 @@ export class NRCRunningTracker {
     this.lastSampleTime = 0;
   }
 
+  /**
+   * Switch distance unit (km/mi)
+   */
   setUnit(unit: 'km' | 'mi'): void {
     this.session.unit = unit;
     this.session.splitDistance = unit === 'km' ? 1 : 0.621371;
   }
 
-  getGPSQuality(): GPSStatus['signalQuality'] {
-    return this.gpsTracker.getStatus().signalQuality;
-  }
-
-  isRunning(): boolean {
-    return this.session.startedAt > 0 && !this.session.isPaused;
-  }
-
-  isPaused(): boolean {
-    return this.session.isPaused;
-  }
-
-  // Legacy compatibility methods
-  addCoordinate(lat: number, lon: number, accuracy?: number, speed?: number): number {
-    const coords: GPSCoordinate = { lat, lon, accuracy, speed, timestamp: Date.now() };
-    this.addSample(coords);
-    return this.session.totals.distance;
-  }
-
-  getCurrentPosition(): RunSample | null {
-    return this.session.samples.length > 0 ? this.session.samples[this.session.samples.length - 1] : null;
-  }
-
+  /**
+   * Get total distance
+   */
   getTotalDistance(): number {
-    return this.session.totals.distance;
-  }
-
-  getCoordinates(): Array<{lat: number, lon: number}> {
-    return this.getPath();
+    return this.totalDistance;
   }
 }
-
-// Export NRCRunningTracker as RunningTracker for backward compatibility
-export const RunningTracker = NRCRunningTracker;

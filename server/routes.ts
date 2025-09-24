@@ -25,6 +25,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { calculateCaloriesBurned, searchExercises, validateActivityData, commonExercises } from "./services/activity";
+import { elevationService, type ElevationPoint } from "./services/elevation";
 import Stripe from "stripe";
 
 // Initialize Stripe
@@ -853,6 +854,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Webhook error:", error);
       res.status(500).json({ message: "Webhook processing failed" });
+    }
+  });
+
+  // Nike Run Club-style elevation endpoint
+  app.post('/api/elevation', async (req, res) => {
+    try {
+      const { locations }: { locations: ElevationPoint[] } = req.body;
+      
+      if (!Array.isArray(locations) || locations.length === 0) {
+        return res.status(400).json({ 
+          message: "Invalid request: locations array is required" 
+        });
+      }
+      
+      // Validate coordinates
+      for (const location of locations) {
+        if (typeof location.lat !== 'number' || typeof location.lon !== 'number' ||
+            Math.abs(location.lat) > 90 || Math.abs(location.lon) > 180) {
+          return res.status(400).json({ 
+            message: "Invalid coordinates: lat must be -90 to 90, lon must be -180 to 180" 
+          });
+        }
+      }
+      
+      // Limit batch size to prevent abuse
+      if (locations.length > 100) {
+        return res.status(400).json({ 
+          message: "Too many locations: maximum 100 per request" 
+        });
+      }
+      
+      const elevationData = await elevationService.getElevations(locations);
+      
+      res.json({
+        success: true,
+        results: elevationData,
+        count: elevationData.length
+      });
+      
+    } catch (error) {
+      console.error("Elevation service error:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch elevation data",
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
     }
   });
 
