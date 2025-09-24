@@ -12,18 +12,16 @@ import { TabNavigation } from "@/components/tab-navigation";
 
 // Pages
 import Dashboard from "@/pages/dashboard";
-import CameraPage from "@/pages/camera";
-import RunningPage from "@/pages/running";
+import FoodPage from "@/pages/food";
+import ActivitiesPage from "@/pages/activities";
 import Diary from "@/pages/diary";
-import CalendarPage from "@/pages/calendar";
 import ProfileSetup from "@/pages/profile-setup";
-import Precision from "@/pages/precision";
 
 // Hooks
 import { useUserProfile } from "@/hooks/use-user-profile";
 
 function AppContent() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('home');
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const { data: profile, isLoading } = useUserProfile();
 
@@ -35,23 +33,19 @@ function AppContent() {
   };
 
   const handleQuickCapture = () => {
-    setActiveTab('camera');
+    setActiveTab('food');
   };
 
   const renderActiveTab = () => {
     switch (activeTab) {
-      case 'dashboard':
+      case 'home':
         return <Dashboard />;
-      case 'camera':
-        return <CameraPage />;
-      case 'precision':
-        return <Precision />;
-      case 'running':
-        return <RunningPage />;
+      case 'food':
+        return <FoodPage />;
       case 'diary':
         return <Diary />;
-      case 'calendar':
-        return <CalendarPage />;
+      case 'activities':
+        return <ActivitiesPage />;
       default:
         return <Dashboard />;
     }
@@ -83,19 +77,20 @@ function AppContent() {
     <div className="mobile-container max-w-md mx-auto bg-background min-h-screen shadow-2xl relative">
       <MobileHeader onProfileClick={() => setShowProfileSetup(true)} />
       
-      <TabNavigation 
-        activeTab={activeTab} 
-        onTabChange={setActiveTab} 
-      />
-      
       <main className="min-h-screen">
         {renderActiveTab()}
       </main>
 
-      {/* Floating Action Button */}
+      {/* Bottom Navigation */}
+      <TabNavigation 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab} 
+      />
+
+      {/* Floating Action Button - positioned above bottom nav */}
       <Button
         size="lg"
-        className="fixed bottom-4 right-4 w-14 h-14 rounded-full shadow-lg z-50 bg-accent hover:bg-accent/90"
+        className="fixed bottom-20 right-4 w-14 h-14 rounded-full shadow-lg z-40 bg-primary hover:bg-primary/90"
         onClick={handleQuickCapture}
         data-testid="button-quick-capture"
       >
