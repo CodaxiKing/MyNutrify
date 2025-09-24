@@ -123,6 +123,39 @@ export function formatDuration(totalMinutes: number): string {
 }
 
 /**
+ * State interface for running tracker
+ */
+export interface RunningState {
+  status: 'stopped' | 'running' | 'paused';
+  stats: RunningStats;
+}
+
+/**
+ * GPS Tracker class for simple GPS coordinate handling
+ */
+export class GPSTracker {
+  getCurrentPosition(): Promise<{lat: number, lon: number}> {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocation is not supported'));
+        return;
+      }
+      
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            lat: position.coords.latitude,
+            lon: position.coords.longitude
+          });
+        },
+        (error) => reject(error),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+    });
+  }
+}
+
+/**
  * Running Tracker Class
  * Handles GPS coordinate tracking and real-time statistics
  */
@@ -136,6 +169,13 @@ export class RunningTracker {
 
   constructor() {
     this.reset();
+  }
+
+  /**
+   * Start running session
+   */
+  startRun(userProfile: UserRunningProfile): void {
+    this.start();
   }
 
   /**
@@ -165,11 +205,42 @@ export class RunningTracker {
   }
 
   /**
+   * Pause running session
+   */
+  pauseRun(): void {
+    this.pause();
+  }
+
+  /**
+   * Resume running session
+   */
+  resumeRun(): void {
+    this.start();
+  }
+
+  /**
    * Stop tracking
    */
   stop(): void {
     this.isRunning = false;
     this.lastPauseTime = null;
+  }
+
+  /**
+   * Stop running session and return final stats
+   */
+  stopRun(): RunningStats {
+    this.stop();
+    // Return stats with default user profile if not provided
+    const defaultProfile: UserRunningProfile = { weight: 70, age: 30, gender: 'male' };
+    return this.getStats(defaultProfile);
+  }
+
+  /**
+   * Add GPS point (alias for addCoordinate)
+   */
+  addPoint(coords: {lat: number, lon: number}): number {
+    return this.addCoordinate(coords.lat, coords.lon);
   }
 
   /**
@@ -249,6 +320,13 @@ export class RunningTracker {
    */
   getCoordinates(): GPSCoordinate[] {
     return [...this.coordinates];
+  }
+
+  /**
+   * Get path coordinates (alias for getCoordinates)
+   */
+  getPath(): GPSCoordinate[] {
+    return this.getCoordinates();
   }
 
   /**

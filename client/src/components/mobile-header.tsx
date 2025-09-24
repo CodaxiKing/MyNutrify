@@ -11,7 +11,7 @@ export function MobileHeader({ onProfileClick }: MobileHeaderProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <i className="fas fa-camera-retro text-xl"></i>
-          <h1 className="text-xl font-bold">CalorieSnap</h1>
+          <h1 className="text-xl font-bold">MyNutrify</h1>
         </div>
         <Button 
           variant="ghost" 

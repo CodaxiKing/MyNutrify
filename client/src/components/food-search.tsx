@@ -12,10 +12,14 @@ interface Food {
   name: string;
   caloriesPerServing: number;
   servingSize: string;
-  carbs?: number;
-  protein?: number;
-  fat?: number;
-  source?: string;
+  carbs?: number | null;
+  protein?: number | null;
+  fat?: number | null;
+  source?: string | null;
+  createdAt?: Date | null;
+  imageUrl?: string | null;
+  confidence?: number | null;
+  barcode?: string | null;
 }
 
 interface FoodSearchProps {

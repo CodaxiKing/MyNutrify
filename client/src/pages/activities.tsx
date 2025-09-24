@@ -39,6 +39,7 @@ export default function ActivitiesPage() {
       avgSpeed: 0,
       avgPace: 0,
       calories: 0,
+      coordinatesCount: 0,
     }
   });
 
@@ -148,14 +149,15 @@ export default function ActivitiesPage() {
         const { latitude, longitude } = position.coords;
         const newCoords: [number, number] = [latitude, longitude];
         
-        runningTracker.addPoint(newCoords);
-        const stats = runningTracker.getStats();
+        runningTracker.addPoint({ lat: latitude, lon: longitude });
+        const stats = runningTracker.getStats(userRunningProfile);
         setRunningState(prev => ({ ...prev, stats }));
 
         if (mapInstanceRef.current) {
           if (pathRef.current) {
             const currentPath = runningTracker.getPath();
-            pathRef.current.setLatLngs(currentPath);
+            const leafletPath = currentPath.map(coord => [coord.lat, coord.lon] as [number, number]);
+            pathRef.current.setLatLngs(leafletPath);
           } else {
             pathRef.current = L.polyline([newCoords], { color: '#ef4444', weight: 4 })
               .addTo(mapInstanceRef.current);

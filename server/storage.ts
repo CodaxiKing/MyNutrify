@@ -35,6 +35,14 @@ export interface IStorage {
   upsertUser(user: UpsertUser): Promise<User>;
   updateUserProfile(id: string, profile: Partial<UserProfile>): Promise<User>;
   
+  // VIP and billing operations
+  updateUserPlan(userId: string, plan: 'free' | 'premium' | 'vip'): Promise<User>;
+  updateStripeCustomerId(userId: string, customerId: string): Promise<User>;
+  updateUserStripeInfo(userId: string, stripeInfo: { customerId?: string; subscriptionId?: string; status?: string }): Promise<User>;
+  resetDailyAIUsage(userId: string): Promise<void>;
+  incrementDailyAIUsage(userId: string): Promise<void>;
+  getUserWithSubscription(userId: string): Promise<User | undefined>;
+  
   // Food operations
   createFood(food: InsertFood): Promise<Food>;
   getFoodById(id: string): Promise<Food | undefined>;
@@ -423,6 +431,72 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(foods, eq(recipeIngredients.foodId, foods.id))
       .where(eq(recipeIngredients.recipeId, recipeId))
       .orderBy(asc(recipeIngredients.createdAt));
+  }
+
+  // VIP and billing operations implementation
+  async updateUserPlan(userId: string, plan: 'free' | 'premium' | 'vip'): Promise<User> {
+    const [updated] = await db
+      .update(users)
+      .set({ plan, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
+  async updateStripeCustomerId(userId: string, customerId: string): Promise<User> {
+    const [updated] = await db
+      .update(users)
+      .set({ stripeCustomerId: customerId, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
+  async updateUserStripeInfo(
+    userId: string, 
+    stripeInfo: { customerId?: string; subscriptionId?: string; status?: string }
+  ): Promise<User> {
+    const updateData: any = { updatedAt: new Date() };
+    
+    if (stripeInfo.customerId) updateData.stripeCustomerId = stripeInfo.customerId;
+    if (stripeInfo.subscriptionId) updateData.stripeSubscriptionId = stripeInfo.subscriptionId;
+    if (stripeInfo.status) updateData.subscriptionStatus = stripeInfo.status;
+
+    const [updated] = await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
+  async resetDailyAIUsage(userId: string): Promise<void> {
+    await db
+      .update(users)
+      .set({ 
+        aiAnalysisUsedToday: 0,
+        lastAiAnalysisReset: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async incrementDailyAIUsage(userId: string): Promise<void> {
+    await db
+      .update(users)
+      .set({ 
+        aiAnalysisUsedToday: sql`${users.aiAnalysisUsedToday} + 1`,
+        updatedAt: new Date()
+      })
+      .where(eq(users.id, userId));
+  }
+
+  async getUserWithSubscription(userId: string): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
+    return user;
   }
 }
 

@@ -25,6 +25,24 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { calculateCaloriesBurned, searchExercises, validateActivityData, commonExercises } from "./services/activity";
+import Stripe from "stripe";
+
+// Initialize Stripe
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+
+// VIP system imports
+import { 
+  requireAuth, 
+  requireAIAnalysis, 
+  requirePremium, 
+  requireVIP,
+  requireRecipeLimit,
+  requireAdvancedNutrition,
+  requireDetailedReports,
+  requireDataExport,
+  incrementDailyAIUsage,
+  type AuthenticatedRequest
+} from "./middleware/permissions";
 
 // Configure multer for image uploads
 const upload = multer({ 
@@ -112,8 +130,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Food analysis routes
-  app.post('/api/food/analyze', upload.single('image'), async (req, res) => {
+  // Food analysis routes - PROTECTED by AI analysis limit
+  app.post('/api/food/analyze', requireAuth, requireAIAnalysis, upload.single('image'), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No image provided" });
@@ -135,6 +153,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         fat: analysisResult.macronutrients.fat,
         confidence: analysisResult.confidence,
       });
+
+      // Increment AI usage counter for the user
+      await incrementDailyAIUsage(req.user.id);
 
       res.json({
         ...analysisResult,
@@ -559,10 +580,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Recipe routes
-  app.get('/api/recipes', async (req, res) => {
+  app.get('/api/recipes', requireAuth, async (req: any, res) => {
     try {
-      const mockUserId = "user-1";
-      const recipes = await storage.getUserRecipes(mockUserId);
+      const recipes = await storage.getUserRecipes(req.user.id);
       res.json(recipes);
     } catch (error) {
       console.error("Error fetching recipes:", error);
@@ -586,12 +606,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/recipes', async (req, res) => {
+  app.post('/api/recipes', requireAuth, requireRecipeLimit, async (req: any, res) => {
     try {
-      const mockUserId = "user-1";
       const recipeData = recipeSchema.parse({
         ...req.body,
-        userId: mockUserId
+        userId: req.user.id
       });
 
       const recipe = await storage.createRecipe(recipeData);
@@ -615,12 +634,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/recipes/:id', async (req, res) => {
+  app.delete('/api/recipes/:id', requireAuth, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const mockUserId = "user-1";
       
-      const success = await storage.deleteRecipe(id, mockUserId);
+      const success = await storage.deleteRecipe(id, req.user.id);
       if (success) {
         res.json({ message: "Recipe deleted successfully" });
       } else {
@@ -690,6 +708,158 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error removing recipe ingredient:", error);
       res.status(500).json({ message: "Failed to remove ingredient" });
+    }
+  });
+
+  // === VIP SUBSCRIPTION ROUTES ===
+  
+  // Get user plan info
+  app.get('/api/user/plan', requireAuth, async (req: any, res) => {
+    try {
+      const user = await storage.getUserWithSubscription(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({
+        plan: user.plan,
+        subscriptionStatus: user.subscriptionStatus,
+        subscriptionEndDate: user.subscriptionEndDate,
+        trialEndDate: user.trialEndDate,
+        aiAnalysisUsedToday: user.aiAnalysisUsedToday,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+      });
+    } catch (error) {
+      console.error("Error fetching user plan:", error);
+      res.status(500).json({ message: "Failed to fetch plan info" });
+    }
+  });
+
+  // Create subscription checkout session
+  app.post('/api/create-checkout-session', requireAuth, async (req: any, res) => {
+    try {
+      if (!stripe) {
+        return res.status(500).json({ message: "Stripe não configurado" });
+      }
+
+      const { plan, billing } = req.body; // plan: 'premium' | 'vip', billing: 'monthly' | 'yearly'
+      
+      if (!plan || !billing) {
+        return res.status(400).json({ message: "Plan and billing cycle required" });
+      }
+
+      const priceId = billing === 'monthly' 
+        ? (plan === 'premium' ? 'price_premium_monthly' : 'price_vip_monthly')
+        : (plan === 'premium' ? 'price_premium_yearly' : 'price_vip_yearly');
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'subscription',
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1,
+          },
+        ],
+        customer_email: req.user.id + "@mynutrify.app", // Usar ID como email temporário
+        metadata: {
+          userId: req.user.id,
+          plan: plan,
+          billing: billing,
+        },
+        success_url: `${process.env.CLIENT_URL || 'http://localhost:5000'}/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.CLIENT_URL || 'http://localhost:5000'}/cancel`,
+        // trial_period_days: plan === 'premium' ? 7 : 14, // Premium: 7 dias, VIP: 14 dias // Feature não disponível na versão gratuita
+      });
+
+      res.json({ 
+        sessionId: session.id,
+        url: session.url 
+      });
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ message: "Erro ao criar sessão de checkout" });
+    }
+  });
+
+  // Webhook do Stripe para processar eventos
+  app.post('/api/stripe-webhook', async (req, res) => {
+    try {
+      if (!stripe) {
+        return res.status(500).json({ message: "Stripe não configurado" });
+      }
+
+      const sig = req.headers['stripe-signature'];
+      let event: Stripe.Event;
+
+      try {
+        event = stripe.webhooks.constructEvent(req.body, sig as string, process.env.STRIPE_WEBHOOK_SECRET || '');
+      } catch (err) {
+        console.error('Webhook signature verification failed:', err);
+        return res.status(400).send('Webhook Error: Invalid signature');
+      }
+
+      // Handle the event
+      switch (event.type) {
+        case 'checkout.session.completed':
+          const session = event.data.object as Stripe.Checkout.Session;
+          const { userId, plan } = session.metadata || {};
+          
+          if (userId && plan) {
+            // Update user plan
+            await storage.updateUserPlan(userId, plan as 'premium' | 'vip');
+            await storage.updateUserStripeInfo(userId, {
+              customerId: session.customer as string,
+              subscriptionId: session.subscription as string,
+              status: 'active'
+            });
+          }
+          break;
+
+        case 'customer.subscription.updated':
+        case 'customer.subscription.deleted':
+          const subscription = event.data.object as Stripe.Subscription;
+          
+          // Find user by Stripe customer ID
+          // TODO: Implement reverse lookup when needed
+          break;
+
+        default:
+          console.log(`Unhandled event type ${event.type}`);
+      }
+
+      res.json({ received: true });
+    } catch (error) {
+      console.error("Webhook error:", error);
+      res.status(500).json({ message: "Webhook processing failed" });
+    }
+  });
+
+  // Get subscription limits/usage
+  app.get('/api/user/limits', requireAuth, async (req: any, res) => {
+    try {
+      const user = await storage.getUserWithSubscription(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const recipes = await storage.getUserRecipes(user.id);
+
+      res.json({
+        plan: user.plan,
+        usage: {
+          aiAnalysisToday: user.aiAnalysisUsedToday,
+          recipesCreated: recipes.length,
+        },
+        limits: {
+          aiAnalysisPerDay: user.plan === 'free' ? 3 : (user.plan === 'premium' ? 25 : -1),
+          recipesLimit: user.plan === 'free' ? 5 : (user.plan === 'premium' ? 50 : -1),
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching user limits:", error);
+      res.status(500).json({ message: "Failed to fetch limits" });
     }
   });
 

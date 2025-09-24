@@ -25,6 +25,9 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
+// User plan enum
+export const userPlanEnum = pgEnum("user_plan", ["free", "premium", "vip"]);
+
 // User profile table
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -39,6 +42,19 @@ export const users = pgTable("users", {
   fitnessGoal: varchar("fitness_goal", { length: 20 }), // 'lose', 'maintain', 'gain'
   bmr: real("bmr"), // calculated BMR
   dailyCalorieGoal: real("daily_calorie_goal"), // calculated daily goal
+  
+  // Subscription and billing
+  plan: userPlanEnum("plan").default("free").notNull(),
+  stripeCustomerId: varchar("stripe_customer_id"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
+  subscriptionStatus: varchar("subscription_status", { length: 20 }), // 'active', 'canceled', 'past_due', etc.
+  subscriptionEndDate: timestamp("subscription_end_date"),
+  trialEndDate: timestamp("trial_end_date"),
+  
+  // Usage limits for free users
+  aiAnalysisUsedToday: integer("ai_analysis_used_today").default(0),
+  lastAiAnalysisReset: timestamp("last_ai_analysis_reset").defaultNow(),
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
