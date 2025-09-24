@@ -117,13 +117,6 @@ export function UpgradeModal({ isOpen, onClose, currentPlan = 'free', restricted
         <div className="relative">
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6">
-            <button
-              onClick={onClose}
-              className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors"
-            >
-              <X className="h-6 w-6" />
-            </button>
-            
             <div className="text-center">
               <h2 className="text-2xl font-bold mb-2">Desbloqueie Todo o Potencial</h2>
               {restrictedFeature && (

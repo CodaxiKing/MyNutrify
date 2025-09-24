@@ -73,16 +73,49 @@ export default function RunningPage() {
       return;
     }
 
-    // Initialize map centered on default location
-    const map = L.map(mapRef.current).setView([37.7749, -122.4194], 13);
-    
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    // Add a small delay to ensure the DOM element is fully rendered
+    const timer = setTimeout(() => {
+      if (!mapRef.current || mapInstanceRef.current) return;
 
-    mapInstanceRef.current = map;
+      try {
+        // Initialize map centered on default location (São Paulo, Brazil)
+        const map = L.map(mapRef.current, {
+          center: [-23.5505, -46.6333],
+          zoom: 13,
+          zoomControl: true,
+          scrollWheelZoom: true,
+          doubleClickZoom: true,
+          boxZoom: true,
+          trackResize: true
+        });
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors',
+          maxZoom: 19,
+          minZoom: 3
+        }).addTo(map);
+
+        mapInstanceRef.current = map;
+
+        // Force map resize after initialization
+        setTimeout(() => {
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.invalidateSize();
+          }
+        }, 100);
+
+      } catch (error) {
+        console.error('Error initializing map:', error);
+        toast({
+          title: "Erro no mapa",
+          description: "Não foi possível carregar o mapa. Tente recarregar a página.",
+          variant: "destructive",
+        });
+      }
+    }, 100);
 
     return () => {
+      clearTimeout(timer);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -349,8 +382,13 @@ export default function RunningPage() {
         <CardContent className="p-0">
           <div 
             ref={mapRef} 
-            className="w-full h-64 rounded-lg"
-            style={{ minHeight: '256px' }}
+            className="w-full h-64 rounded-lg relative overflow-hidden"
+            style={{ 
+              minHeight: '256px',
+              height: '256px',
+              zIndex: 1,
+              position: 'relative'
+            }}
           />
         </CardContent>
       </Card>
