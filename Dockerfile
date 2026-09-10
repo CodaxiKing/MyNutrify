@@ -38,9 +38,15 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/shared/exercise-db.json ./shared/exercise-db.json
 COPY --from=build /app/shared/taco-db.json ./shared/taco-db.json
 
+# O Drizzle precisa destes arquivos para criar e atualizar as tabelas antes de
+# iniciar a API. `push` e idempotente: em reinicios sem mudanca ele nao altera
+# os dados existentes.
+COPY --from=build /app/drizzle.config.ts ./drizzle.config.ts
+COPY --from=build /app/shared/schema.ts ./shared/schema.ts
+
 # Não rodar como root.
 USER node
 
 EXPOSE 5000
 
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-c", "npm run db:push && node dist/index.js"]
