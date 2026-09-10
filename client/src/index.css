@@ -3,99 +3,101 @@
 @tailwind utilities;
 
 :root {
-  --background: hsl(0 0% 100%);
-  --foreground: hsl(210 25% 7.8431%);
-  --card: hsl(180 6.6667% 97.0588%);
-  --card-foreground: hsl(210 25% 7.8431%);
-  --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(210 25% 7.8431%);
-  --primary: hsl(203.8863 88.2845% 53.1373%);
-  --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(210 25% 7.8431%);
-  --secondary-foreground: hsl(0 0% 100%);
-  --muted: hsl(240 1.9608% 90%);
-  --muted-foreground: hsl(210 25% 7.8431%);
-  --accent: hsl(211.5789 51.3514% 92.7451%);
-  --accent-foreground: hsl(203.8863 88.2845% 53.1373%);
-  --destructive: hsl(356.3033 90.5579% 54.3137%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(201.4286 30.4348% 90.9804%);
-  --input: hsl(200 23.0769% 97.4510%);
-  --ring: hsl(202.8169 89.1213% 53.1373%);
-  --chart-1: hsl(203.8863 88.2845% 53.1373%);
-  --chart-2: hsl(159.7826 100% 36.0784%);
-  --chart-3: hsl(42.0290 92.8251% 56.2745%);
-  --chart-4: hsl(147.1429 78.5047% 41.9608%);
-  --chart-5: hsl(341.4894 75.2000% 50.9804%);
-  --sidebar: hsl(180 6.6667% 97.0588%);
-  --sidebar-foreground: hsl(210 25% 7.8431%);
-  --sidebar-primary: hsl(203.8863 88.2845% 53.1373%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(211.5789 51.3514% 92.7451%);
-  --sidebar-accent-foreground: hsl(203.8863 88.2845% 53.1373%);
-  --sidebar-border: hsl(205.0000 25.0000% 90.5882%);
-  --sidebar-ring: hsl(202.8169 89.1213% 53.1373%);
-  --font-sans: Open Sans, sans-serif;
+  --background: 0 0% 100%;
+  --foreground: 210 25% 7.8431%;
+  --card: 180 6.6667% 97.0588%;
+  --card-foreground: 210 25% 7.8431%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 210 25% 7.8431%;
+  --primary: 203.8863 88.2845% 53.1373%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 25% 7.8431%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 240 1.9608% 90%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 211.5789 51.3514% 92.7451%;
+  --accent-foreground: 203.8863 88.2845% 53.1373%;
+  --destructive: 356.3033 90.5579% 54.3137%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 201.4286 30.4348% 90.9804%;
+  --input: 200 23.0769% 97.4510%;
+  --ring: 202.8169 89.1213% 53.1373%;
+  --chart-1: 203.8863 88.2845% 53.1373%;
+  --chart-2: 159.7826 100% 36.0784%;
+  --chart-3: 42.0290 92.8251% 56.2745%;
+  --chart-4: 147.1429 78.5047% 41.9608%;
+  --chart-5: 341.4894 75.2000% 50.9804%;
+  --sidebar: 180 6.6667% 97.0588%;
+  --sidebar-foreground: 210 25% 7.8431%;
+  --sidebar-primary: 203.8863 88.2845% 53.1373%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 211.5789 51.3514% 92.7451%;
+  --sidebar-accent-foreground: 203.8863 88.2845% 53.1373%;
+  --sidebar-border: 205.0000 25.0000% 90.5882%;
+  --sidebar-ring: 202.8169 89.1213% 53.1373%;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Plus Jakarta Sans", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
   --font-serif: Georgia, serif;
-  --font-mono: Menlo, monospace;
-  --radius: 1.3rem;
-  --shadow-2xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 2px 4px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 4px 6px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 8px 10px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --radius: 0.9rem;
+  --shadow-2xs: 0px 2px 0px 0px hsl(215 25% 27% / 0.10);
+  --shadow-xs: 0px 2px 0px 0px hsl(215 25% 27% / 0.10);
+  --shadow-sm: 0px 2px 0px 0px hsl(215 25% 27% / 0.10), 0px 1px 2px -1px hsl(215 25% 27% / 0.10);
+  --shadow: 0px 2px 0px 0px hsl(215 25% 27% / 0.10), 0px 1px 2px -1px hsl(215 25% 27% / 0.10);
+  --shadow-md: 0px 2px 0px 0px hsl(215 25% 27% / 0.10), 0px 2px 4px -1px hsl(215 25% 27% / 0.10);
+  --shadow-lg: 0px 2px 0px 0px hsl(215 25% 27% / 0.10), 0px 4px 6px -1px hsl(215 25% 27% / 0.10);
+  --shadow-xl: 0px 2px 0px 0px hsl(215 25% 27% / 0.10), 0px 8px 10px -1px hsl(215 25% 27% / 0.10);
+  --shadow-2xl: 0px 2px 0px 0px hsl(215 25% 27% / 0.10);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
 }
 
 .dark {
-  --background: hsl(0 0% 0%);
-  --foreground: hsl(200 6.6667% 91.1765%);
-  --card: hsl(228 9.8039% 10%);
-  --card-foreground: hsl(0 0% 85.0980%);
-  --popover: hsl(0 0% 0%);
-  --popover-foreground: hsl(200 6.6667% 91.1765%);
-  --primary: hsl(203.7736 87.6033% 52.5490%);
-  --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(195.0000 15.3846% 94.9020%);
-  --secondary-foreground: hsl(210 25% 7.8431%);
-  --muted: hsl(0 0% 9.4118%);
-  --muted-foreground: hsl(210 3.3898% 46.2745%);
-  --accent: hsl(205.7143 70% 7.8431%);
-  --accent-foreground: hsl(203.7736 87.6033% 52.5490%);
-  --destructive: hsl(356.3033 90.5579% 54.3137%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(210 5.2632% 14.9020%);
-  --input: hsl(207.6923 27.6596% 18.4314%);
-  --ring: hsl(202.8169 89.1213% 53.1373%);
-  --chart-1: hsl(203.8863 88.2845% 53.1373%);
-  --chart-2: hsl(159.7826 100% 36.0784%);
-  --chart-3: hsl(42.0290 92.8251% 56.2745%);
-  --chart-4: hsl(147.1429 78.5047% 41.9608%);
-  --chart-5: hsl(341.4894 75.2000% 50.9804%);
-  --sidebar: hsl(228 9.8039% 10%);
-  --sidebar-foreground: hsl(0 0% 85.0980%);
-  --sidebar-primary: hsl(202.8169 89.1213% 53.1373%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(205.7143 70% 7.8431%);
-  --sidebar-accent-foreground: hsl(203.7736 87.6033% 52.5490%);
-  --sidebar-border: hsl(205.7143 15.7895% 26.0784%);
-  --sidebar-ring: hsl(202.8169 89.1213% 53.1373%);
-  --font-sans: Open Sans, sans-serif;
+  --background: 0 0% 0%;
+  --foreground: 200 6.6667% 91.1765%;
+  --card: 228 9.8039% 10%;
+  --card-foreground: 0 0% 85.0980%;
+  --popover: 0 0% 0%;
+  --popover-foreground: 200 6.6667% 91.1765%;
+  --primary: 203.7736 87.6033% 52.5490%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 195.0000 15.3846% 94.9020%;
+  --secondary-foreground: 210 25% 7.8431%;
+  --muted: 0 0% 9.4118%;
+  --muted-foreground: 210 3.3898% 46.2745%;
+  --accent: 205.7143 70% 7.8431%;
+  --accent-foreground: 203.7736 87.6033% 52.5490%;
+  --destructive: 356.3033 90.5579% 54.3137%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 210 5.2632% 14.9020%;
+  --input: 207.6923 27.6596% 18.4314%;
+  --ring: 202.8169 89.1213% 53.1373%;
+  --chart-1: 203.8863 88.2845% 53.1373%;
+  --chart-2: 159.7826 100% 36.0784%;
+  --chart-3: 42.0290 92.8251% 56.2745%;
+  --chart-4: 147.1429 78.5047% 41.9608%;
+  --chart-5: 341.4894 75.2000% 50.9804%;
+  --sidebar: 228 9.8039% 10%;
+  --sidebar-foreground: 0 0% 85.0980%;
+  --sidebar-primary: 202.8169 89.1213% 53.1373%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 205.7143 70% 7.8431%;
+  --sidebar-accent-foreground: 203.7736 87.6033% 52.5490%;
+  --sidebar-border: 205.7143 15.7895% 26.0784%;
+  --sidebar-ring: 202.8169 89.1213% 53.1373%;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Plus Jakarta Sans", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
   --font-serif: Georgia, serif;
-  --font-mono: Menlo, monospace;
-  --radius: 1.3rem;
-  --shadow-2xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-sm: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-md: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 2px 4px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-lg: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 4px 6px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 8px 10px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
-  --shadow-2xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --radius: 0.9rem;
+  --shadow-2xs: 0px 2px 0px 0px hsl(215 25% 27% / 0.10);
+  --shadow-xs: 0px 2px 0px 0px hsl(215 25% 27% / 0.10);
+  --shadow-sm: 0px 2px 0px 0px hsl(215 25% 27% / 0.10), 0px 1px 2px -1px hsl(215 25% 27% / 0.10);
+  --shadow: 0px 2px 0px 0px hsl(215 25% 27% / 0.10), 0px 1px 2px -1px hsl(215 25% 27% / 0.10);
+  --shadow-md: 0px 2px 0px 0px hsl(215 25% 27% / 0.10), 0px 2px 4px -1px hsl(215 25% 27% / 0.10);
+  --shadow-lg: 0px 2px 0px 0px hsl(215 25% 27% / 0.10), 0px 4px 6px -1px hsl(215 25% 27% / 0.10);
+  --shadow-xl: 0px 2px 0px 0px hsl(215 25% 27% / 0.10), 0px 8px 10px -1px hsl(215 25% 27% / 0.10);
+  --shadow-2xl: 0px 2px 0px 0px hsl(215 25% 27% / 0.10);
 }
 
 @layer base {
@@ -105,6 +107,12 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Títulos com tracking negativo — texto grande solto parece frouxo. */
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
   }
 }
 
@@ -192,4 +200,218 @@
 /* Hide any orphaned leaflet containers */
 .leaflet-container:not(.map-container .leaflet-container) {
   display: none !important;
+}
+/* ==========================================================================
+   Camada de design do MyNutrify
+   Gradientes, superfícies, animações e utilitários compartilhados.
+   ========================================================================== */
+
+:root {
+  /* Gradientes de marca usados em headers, botões e destaques. */
+  --gradient-brand: linear-gradient(135deg, hsl(203 88% 53%) 0%, hsl(190 90% 45%) 100%);
+  --gradient-energy: linear-gradient(135deg, hsl(24 95% 58%) 0%, hsl(43 96% 56%) 100%);
+  --gradient-fasting: linear-gradient(135deg, hsl(262 83% 62%) 0%, hsl(292 76% 58%) 100%);
+  --gradient-strength: linear-gradient(135deg, hsl(345 82% 55%) 0%, hsl(15 90% 57%) 100%);
+  --gradient-fresh: linear-gradient(135deg, hsl(160 84% 39%) 0%, hsl(174 80% 42%) 100%);
+
+  /* Altura da barra de navegação, para o conteúdo não ficar por baixo dela. */
+  --bottom-nav-height: 5.5rem;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    /* Evita o "puxão" elástico do scroll no iOS dentro do app. */
+    overscroll-behavior-y: none;
+  }
+
+  /* Respeita quem pediu menos movimento no sistema operacional. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Container principal do app — largura de celular, centralizado. */
+  .mobile-container {
+    @apply mx-auto w-full max-w-md bg-background;
+  }
+
+  /* Espaço no fim das páginas para o conteúdo não sumir atrás da tab bar. */
+  .page-content {
+    padding-bottom: calc(
+      var(--bottom-nav-height) + max(env(safe-area-inset-bottom, 0px), 1.25rem) + 1.5rem
+    );
+  }
+
+  /* Cartão de vidro usado nos headers com gradiente. */
+  .glass-card {
+    @apply border border-white/15 bg-white/10 backdrop-blur-md;
+  }
+
+  /*
+    Superfície padrão dos cartões.
+
+    Um retângulo cinza com borda de 1px é o que faz uma interface parecer
+    template. Aqui a superfície tem um leve gradiente vertical, um filete de luz
+    no topo (como plástico ou vidro pegando luz de cima) e sombra em duas
+    camadas — uma rente para definir a borda e outra difusa para dar altura.
+  */
+  .surface-card {
+    @apply relative rounded-2xl border border-border/70;
+    background-image: linear-gradient(
+      to bottom,
+      hsl(var(--card)),
+      hsl(var(--card) / 0.72)
+    );
+    box-shadow:
+      0 1px 2px hsl(215 25% 27% / 0.05),
+      0 12px 28px -18px hsl(215 25% 27% / 0.35);
+  }
+
+  /* Filete de luz no topo do cartão. */
+  .surface-card::before {
+    content: "";
+    @apply pointer-events-none absolute inset-x-4 top-0 h-px rounded-full;
+    background-image: linear-gradient(
+      to right,
+      transparent,
+      hsl(0 0% 100% / 0.5),
+      transparent
+    );
+  }
+
+  :is(.dark) .surface-card::before {
+    background-image: linear-gradient(
+      to right,
+      transparent,
+      hsl(0 0% 100% / 0.09),
+      transparent
+    );
+  }
+
+  /* Cartão com o filete tingido pela cor de acento da seção. */
+  .surface-card-accent {
+    @apply surface-card border-primary/25;
+  }
+
+  /*
+    Rótulo de seção: versalete espaçado. Diferencia a hierarquia sem depender
+    só de tamanho de fonte, que é o que deixa telas parecendo todas iguais.
+  */
+  .section-label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground;
+  }
+
+  /* Número de destaque: display, apertado e com algarismos de mesma largura. */
+  .display-number {
+    font-family: var(--font-display);
+    @apply font-bold tabular-nums;
+    letter-spacing: -0.03em;
+  }
+
+  /* Cronômetros e contagens regressivas. */
+  .clock-number {
+    font-family: var(--font-mono);
+    @apply font-semibold tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  /*
+    Grão sutil sobre superfícies grandes. Quebra a chapa lisa dos gradientes,
+    que é o que mais entrega uma tela como "genérica" em telas OLED.
+  */
+  .grain::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0 opacity-[0.13] mix-blend-overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* Brilho colorido atrás de um elemento herói. */
+  .glow-under {
+    @apply relative;
+  }
+  .glow-under::before {
+    content: "";
+    @apply pointer-events-none absolute left-1/2 top-1/2 -z-10 size-[115%] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-25 blur-3xl;
+    background-image: var(--gradient-brand);
+  }
+
+  .gradient-brand {
+    background-image: var(--gradient-brand);
+  }
+  .gradient-energy {
+    background-image: var(--gradient-energy);
+  }
+  .gradient-fasting {
+    background-image: var(--gradient-fasting);
+  }
+  .gradient-strength {
+    background-image: var(--gradient-strength);
+  }
+  .gradient-fresh {
+    background-image: var(--gradient-fresh);
+  }
+
+  /* Texto com preenchimento em gradiente. */
+  .text-gradient-brand {
+    background-image: var(--gradient-brand);
+    @apply bg-clip-text text-transparent;
+  }
+
+  /* Placeholder animado de carregamento. */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted) / 0) 0%,
+      hsl(0 0% 100% / 0.14) 50%,
+      hsl(var(--muted) / 0) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+
+  /* Esconde a barra de rolagem em carrosséis horizontais. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Pulso suave usado no cronômetro de jejum ativo. */
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.04);
+  }
+}
+
+.animate-breathe {
+  animation: breathe 3.5s ease-in-out infinite;
 }

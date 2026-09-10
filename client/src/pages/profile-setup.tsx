@@ -1,31 +1,91 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+/**
+ * Onboarding do perfil.
+ *
+ * Coleta altura, peso, idade, sexo e objetivo, e mostra ao vivo o BMR calculado
+ * (Mifflin-St Jeor), a meta calórica diária e a divisão de macros.
+ *
+ * A tela ainda dizia "Welcome to CalorieSnap" — nome de um projeto anterior — e
+ * era a única em inglês num app em português.
+ */
+
+import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Salad, Target, TrendingDown, TrendingUp, Zap } from "lucide-react";
+
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ActionButton } from "@/components/ui/action-button";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { useToast } from "@/hooks/use-toast";
 import { useUpdateUserProfile } from "@/hooks/use-user-profile";
-import { calculateBMR, calculateDailyCalorieGoal, calculateMacroTargets } from "@/lib/nutrition-calculator";
-import { UserProfile } from "@/types/nutrition";
-import { TrendingDown, Target, TrendingUp, Activity, Zap } from "lucide-react";
+import {
+  calculateBMR,
+  calculateDailyCalorieGoal,
+  calculateMacroTargets,
+} from "@/lib/nutrition-calculator";
+import type { UserProfile } from "@/types/nutrition";
+import { cn } from "@/lib/utils";
+import { staggerContainer, staggerItem } from "@/lib/motion";
 
 const profileSchema = z.object({
-  height: z.number().min(100, "Height must be at least 100cm").max(250, "Height must be less than 250cm"),
-  weight: z.number().min(30, "Weight must be at least 30kg").max(300, "Weight must be less than 300kg"),
-  age: z.number().min(13, "Age must be at least 13").max(120, "Age must be less than 120"),
-  gender: z.enum(['male', 'female'], { required_error: "Please select your gender" }),
-  fitnessGoal: z.enum(['lose', 'maintain', 'gain'], { required_error: "Please select your fitness goal" }),
+  height: z
+    .number({ invalid_type_error: "Informe sua altura" })
+    .min(100, "A altura deve ser de pelo menos 100 cm")
+    .max(250, "A altura deve ser menor que 250 cm"),
+  weight: z
+    .number({ invalid_type_error: "Informe seu peso" })
+    .min(30, "O peso deve ser de pelo menos 30 kg")
+    .max(300, "O peso deve ser menor que 300 kg"),
+  age: z
+    .number({ invalid_type_error: "Informe sua idade" })
+    .min(13, "A idade mínima é 13 anos")
+    .max(120, "A idade deve ser menor que 120 anos"),
+  gender: z.enum(["male", "female"], { required_error: "Selecione o sexo biológico" }),
+  fitnessGoal: z.enum(["lose", "maintain", "gain"], {
+    required_error: "Escolha um objetivo",
+  }),
 });
 
 type ProfileForm = z.infer<typeof profileSchema>;
 
-interface ProfileSetupProps {
+const GOALS = {
+  lose: {
+    title: "Emagrecer",
+    description: "Criar um déficit calórico",
+    detail: "Cerca de 500 kcal abaixo da manutenção — aproximadamente 0,5 kg por semana.",
+    icon: TrendingDown,
+    accent: "text-rose-500",
+    ring: "border-rose-500/50 bg-rose-500/5",
+  },
+  maintain: {
+    title: "Manter",
+    description: "Manter o peso atual",
+    detail: "Comer no nível de manutenção para estabilizar o peso.",
+    icon: Target,
+    accent: "text-sky-500",
+    ring: "border-sky-500/50 bg-sky-500/5",
+  },
+  gain: {
+    title: "Ganhar massa",
+    description: "Criar um superávit calórico",
+    detail: "De 300 a 500 kcal acima da manutenção, para ganho magro.",
+    icon: TrendingUp,
+    accent: "text-emerald-500",
+    ring: "border-emerald-500/50 bg-emerald-500/5",
+  },
+} as const;
+
+export interface ProfileSetupProps {
   onComplete: (profile: UserProfile) => void;
   existingProfile?: Partial<UserProfile>;
 }
@@ -33,324 +93,409 @@ interface ProfileSetupProps {
 export default function ProfileSetup({ onComplete, existingProfile }: ProfileSetupProps) {
   const { toast } = useToast();
   const updateProfile = useUpdateUserProfile();
-  
-  const [calculatedValues, setCalculatedValues] = useState({
-    bmr: 0,
-    dailyGoal: 0,
-    macroTargets: { protein: 0, carbs: 0, fat: 0 }
-  });
+
+  const isEditing = Boolean(existingProfile?.height && existingProfile?.weight);
 
   const form = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
+    mode: "onChange",
     defaultValues: {
-      height: existingProfile?.height || undefined,
-      weight: existingProfile?.weight || undefined,
-      age: existingProfile?.age || undefined,
-      gender: existingProfile?.gender || undefined,
-      fitnessGoal: existingProfile?.fitnessGoal || undefined,
+      height: existingProfile?.height ?? undefined,
+      weight: existingProfile?.weight ?? undefined,
+      age: existingProfile?.age ?? undefined,
+      gender: existingProfile?.gender ?? undefined,
+      fitnessGoal: existingProfile?.fitnessGoal ?? undefined,
     },
   });
 
-  const watchedValues = form.watch();
+  const values = form.watch();
 
-  // Calculate values whenever form changes
+  const [calculated, setCalculated] = useState({
+    bmr: 0,
+    dailyGoal: 0,
+    macroTargets: { protein: 0, carbs: 0, fat: 0 },
+  });
+
+  const { height, weight, age, gender, fitnessGoal } = values;
+
   useEffect(() => {
-    const { height, weight, age, gender, fitnessGoal } = watchedValues;
-    
-    if (height && weight && age && gender && fitnessGoal) {
-      const bmr = calculateBMR({ height, weight, age, gender });
-      const dailyGoal = calculateDailyCalorieGoal({ height, weight, age, gender, fitnessGoal });
-      const macroTargets = calculateMacroTargets(dailyGoal, fitnessGoal);
-      
-      setCalculatedValues({ bmr, dailyGoal, macroTargets });
-    }
-  }, [watchedValues]);
+    if (!height || !weight || !age || !gender || !fitnessGoal) return;
+
+    const bmr = calculateBMR({ height, weight, age, gender });
+    const dailyGoal = calculateDailyCalorieGoal({ height, weight, age, gender, fitnessGoal });
+
+    setCalculated({
+      bmr,
+      dailyGoal,
+      macroTargets: calculateMacroTargets(dailyGoal, fitnessGoal),
+    });
+    // Depender dos campos individualmente evita recalcular a cada render — o
+    // objeto de `watch()` tem identidade nova toda vez.
+  }, [height, weight, age, gender, fitnessGoal]);
+
+  const selectedGoal = fitnessGoal ? GOALS[fitnessGoal] : null;
+
+  const activityCalories = useMemo(
+    () => Math.max(0, Math.round(calculated.dailyGoal - calculated.bmr)),
+    [calculated],
+  );
 
   const onSubmit = async (data: ProfileForm) => {
     try {
       const profileData: UserProfile = {
         ...data,
-        bmr: calculatedValues.bmr,
-        dailyCalorieGoal: calculatedValues.dailyGoal,
+        bmr: calculated.bmr,
+        dailyCalorieGoal: calculated.dailyGoal,
       };
 
       await updateProfile.mutateAsync(profileData);
-      
+
       toast({
-        title: "Profile Updated",
-        description: "Your personalized nutrition goals have been calculated.",
+        title: isEditing ? "Perfil atualizado" : "Tudo pronto!",
+        description: `Sua meta é de ${Math.round(calculated.dailyGoal)} kcal por dia.`,
       });
-      
+
       onComplete(profileData);
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to update profile. Please try again.",
+        title: "Não foi possível salvar",
+        description: error instanceof Error ? error.message : "Tente novamente.",
         variant: "destructive",
       });
     }
   };
 
-  const goalLabels = {
-    lose: { 
-      title: "Lose Weight", 
-      description: "Create a calorie deficit", 
-      icon: TrendingDown,
-      color: "text-red-500",
-      bgColor: "bg-red-50",
-      borderColor: "border-red-200",
-      detail: "Eat 500 cal below maintenance to lose ~0.5kg per week"
-    },
-    maintain: { 
-      title: "Maintain Weight", 
-      description: "Keep current weight", 
-      icon: Target,
-      color: "text-blue-500",
-      bgColor: "bg-blue-50",
-      borderColor: "border-blue-200",
-      detail: "Eat at maintenance level to keep your current weight"
-    },
-    gain: { 
-      title: "Build Muscle", 
-      description: "Create a calorie surplus", 
-      icon: TrendingUp,
-      color: "text-green-500",
-      bgColor: "bg-green-50",
-      borderColor: "border-green-200",
-      detail: "Eat 300-500 cal above maintenance for lean muscle gain"
-    },
-  };
-
   return (
-    <div className="min-h-screen bg-background p-4 flex items-center justify-center">
-      <Card className="w-full max-w-md">
-        <CardContent className="p-6 space-y-6">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold mb-2">Welcome to CalorieSnap</h1>
-            <p className="text-muted-foreground">
-              Let's set up your profile for personalized calorie goals
-            </p>
+    <div className="mobile-container min-h-screen bg-background">
+      <header
+        className="gradient-brand grain relative overflow-hidden rounded-b-[2rem] px-5 page-content text-white"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 2.5rem)" }}
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-16 -top-20 size-56 rounded-full bg-white/20 blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-24 -left-16 size-52 rounded-full bg-black/15 blur-3xl"
+        />
+
+        <div className="relative">
+          <div className="glass-card mb-4 flex size-12 items-center justify-center rounded-2xl">
+            <Salad className="size-6" />
           </div>
 
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {/* Basic Measurements */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="height">Height (cm)</Label>
-                <Input
-                  id="height"
-                  type="number"
-                  placeholder="175"
-                  {...form.register('height', { valueAsNumber: true })}
-                  data-testid="input-height"
-                />
-                {form.formState.errors.height && (
-                  <p className="text-sm text-destructive">
-                    {form.formState.errors.height.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="weight">Weight (kg)</Label>
-                <Input
-                  id="weight"
-                  type="number"
-                  step="0.1"
-                  placeholder="70"
-                  {...form.register('weight', { valueAsNumber: true })}
-                  data-testid="input-weight"
-                />
-                {form.formState.errors.weight && (
-                  <p className="text-sm text-destructive">
-                    {form.formState.errors.weight.message}
-                  </p>
-                )}
-              </div>
-            </div>
+          <p className="section-label text-white/70">
+            {isEditing ? "Perfil" : "Passo único"}
+          </p>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="age">Age</Label>
-                <Input
-                  id="age"
-                  type="number"
-                  placeholder="28"
-                  {...form.register('age', { valueAsNumber: true })}
-                  data-testid="input-age"
-                />
-                {form.formState.errors.age && (
-                  <p className="text-sm text-destructive">
-                    {form.formState.errors.age.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="gender">Gender</Label>
-                <Select onValueChange={(value) => form.setValue('gender', value as 'male' | 'female')}>
-                  <SelectTrigger data-testid="select-gender">
-                    <SelectValue placeholder="Select" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="male">Male</SelectItem>
-                    <SelectItem value="female">Female</SelectItem>
-                  </SelectContent>
-                </Select>
-                {form.formState.errors.gender && (
-                  <p className="text-sm text-destructive">
-                    {form.formState.errors.gender.message}
-                  </p>
-                )}
-              </div>
-            </div>
+          <h1 className="mt-1.5 font-display text-[2rem] font-bold leading-[1.08] tracking-tight">
+            {isEditing ? (
+              "Seus dados"
+            ) : (
+              <>
+                Suas metas,
+                <br />
+                <span className="text-white/70">calculadas para você.</span>
+              </>
+            )}
+          </h1>
 
-            {/* Fitness Goal Tabs */}
-            <div className="space-y-3">
-              <Label className="flex items-center gap-2">
-                <Activity className="h-4 w-4" />
-                Choose Your Fitness Goal
-              </Label>
-              
-              <Tabs 
-                value={form.watch('fitnessGoal') || ''} 
-                onValueChange={(value) => form.setValue('fitnessGoal', value as 'lose' | 'maintain' | 'gain')}
-                className="w-full"
+          <p className="mt-3 max-w-[19rem] text-sm leading-relaxed text-white/75">
+            {isEditing
+              ? "Atualize seus dados para recalcular as metas."
+              : "Cinco campos e o app calcula seu metabolismo basal, a meta calórica diária e a divisão de macros."}
+          </p>
+        </div>
+      </header>
+
+      <motion.form
+        variants={staggerContainer}
+        initial="initial"
+        animate="animate"
+        onSubmit={form.handleSubmit(onSubmit)}
+        className="space-y-4 px-4 py-5 page-content"
+      >
+        {/* ------------------------------------------------------- medidas */}
+        <motion.div variants={staggerItem} className="surface-card space-y-4 p-5">
+          <p className="section-label">Suas medidas</p>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field
+              id="height"
+              label="Altura (cm)"
+              placeholder="175"
+              error={form.formState.errors.height?.message}
+              register={form.register("height", { valueAsNumber: true })}
+              testId="input-height"
+            />
+            <Field
+              id="weight"
+              label="Peso (kg)"
+              placeholder="70"
+              step="0.1"
+              error={form.formState.errors.weight?.message}
+              register={form.register("weight", { valueAsNumber: true })}
+              testId="input-weight"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field
+              id="age"
+              label="Idade"
+              placeholder="28"
+              error={form.formState.errors.age?.message}
+              register={form.register("age", { valueAsNumber: true })}
+              testId="input-age"
+            />
+
+            <div className="space-y-1.5">
+              <Label htmlFor="gender">Sexo biológico</Label>
+              <Select
+                value={gender ?? ""}
+                onValueChange={(value) =>
+                  form.setValue("gender", value as "male" | "female", {
+                    shouldValidate: true,
+                  })
+                }
               >
-                <TabsList className="grid grid-cols-3 w-full h-auto p-1">
-                  {Object.entries(goalLabels).map(([value, { title, icon: Icon, color }]) => (
-                    <TabsTrigger
-                      key={value}
-                      value={value}
-                      className="flex flex-col gap-1 px-3 py-3 data-[state=active]:bg-background data-[state=active]:shadow-sm"
-                      data-testid={`tab-${value}`}
-                    >
-                      <Icon className={`h-5 w-5 ${color}`} />
-                      <span className="text-xs font-medium">{title}</span>
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
-
-              {/* Goal Description Card */}
-              {form.watch('fitnessGoal') && (
-                <Card className={`${goalLabels[form.watch('fitnessGoal')!].bgColor} ${goalLabels[form.watch('fitnessGoal')!].borderColor} border-2 transition-all duration-200`}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-3">
-                      <div className={`p-2 rounded-lg bg-white ${goalLabels[form.watch('fitnessGoal')!].borderColor} border`}>
-                        {(() => {
-                          const Icon = goalLabels[form.watch('fitnessGoal')!].icon;
-                          return <Icon className={`h-5 w-5 ${goalLabels[form.watch('fitnessGoal')!].color}`} />;
-                        })()}
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-sm mb-1">
-                          {goalLabels[form.watch('fitnessGoal')!].title}
-                        </h4>
-                        <p className="text-xs text-muted-foreground mb-2">
-                          {goalLabels[form.watch('fitnessGoal')!].description}
-                        </p>
-                        <p className="text-xs font-medium">
-                          {goalLabels[form.watch('fitnessGoal')!].detail}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {form.formState.errors.fitnessGoal && (
-                <p className="text-sm text-destructive">
-                  {form.formState.errors.fitnessGoal.message}
+                <SelectTrigger id="gender" className="h-11 rounded-xl" data-testid="select-gender">
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">Masculino</SelectItem>
+                  <SelectItem value="female">Feminino</SelectItem>
+                </SelectContent>
+              </Select>
+              {form.formState.errors.gender && (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.gender.message}
                 </p>
               )}
             </div>
+          </div>
 
-            {/* Enhanced Calculated Goals Display */}
-            {calculatedValues.bmr > 0 && (
-              <Card className="border-2 border-primary/20 bg-gradient-to-br from-background to-primary/5">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Zap className="h-4 w-4 text-primary" />
-                    <h4 className="font-semibold">Your Personalized Goals</h4>
-                  </div>
-                  
-                  {/* Main Calorie Display */}
-                  <div className="text-center mb-4 p-4 bg-background/50 rounded-lg border">
-                    <div className="text-sm text-muted-foreground mb-1">Daily Calorie Target</div>
-                    <div className="text-3xl font-bold text-primary" data-testid="text-calculated-goal">
-                      {Math.round(calculatedValues.dailyGoal)}
-                    </div>
-                    <div className="text-sm font-medium">calories</div>
-                    {form.watch('fitnessGoal') && (
-                      <div className={`text-xs mt-1 ${goalLabels[form.watch('fitnessGoal')!].color} font-medium`}>
-                        {goalLabels[form.watch('fitnessGoal')!].title} Goal
-                      </div>
-                    )}
-                  </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            O sexo biológico entra na fórmula de Mifflin-St Jeor, usada para estimar o seu
+            metabolismo basal.
+          </p>
+        </motion.div>
 
-                  {/* Detailed Breakdown */}
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div className="text-center p-3 bg-background/30 rounded-lg">
-                      <div className="text-xs text-muted-foreground">Base Metabolic Rate</div>
-                      <div className="text-lg font-semibold" data-testid="text-calculated-bmr">
-                        {Math.round(calculatedValues.bmr)}
-                      </div>
-                      <div className="text-xs">cal/day</div>
-                    </div>
-                    <div className="text-center p-3 bg-background/30 rounded-lg">
-                      <div className="text-xs text-muted-foreground">Activity Level</div>
-                      <div className="text-lg font-semibold">
-                        {Math.round(calculatedValues.dailyGoal - calculatedValues.bmr)}
-                      </div>
-                      <div className="text-xs">cal/day</div>
-                    </div>
-                  </div>
+        {/* ------------------------------------------------------- objetivo */}
+        <motion.div variants={staggerItem} className="surface-card space-y-3 p-5">
+          <p className="section-label">Seu objetivo</p>
 
-                  {/* Macronutrient Targets */}
-                  <div className="space-y-2">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Daily Macronutrient Targets</div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="text-center p-2 bg-red-50 border border-red-200 rounded-md">
-                        <div className="text-xs font-medium text-red-700">Protein</div>
-                        <div className="text-sm font-bold text-red-600">
-                          {calculatedValues.macroTargets.protein}g
-                        </div>
-                      </div>
-                      <div className="text-center p-2 bg-blue-50 border border-blue-200 rounded-md">
-                        <div className="text-xs font-medium text-blue-700">Carbs</div>
-                        <div className="text-sm font-bold text-blue-600">
-                          {calculatedValues.macroTargets.carbs}g
-                        </div>
-                      </div>
-                      <div className="text-center p-2 bg-yellow-50 border border-yellow-200 rounded-md">
-                        <div className="text-xs font-medium text-yellow-700">Fat</div>
-                        <div className="text-sm font-bold text-yellow-600">
-                          {calculatedValues.macroTargets.fat}g
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+          <div className="grid grid-cols-3 gap-2">
+            {(Object.keys(GOALS) as Array<keyof typeof GOALS>).map((key) => {
+              const goal = GOALS[key];
+              const Icon = goal.icon;
+              const active = fitnessGoal === key;
 
-            <Button 
-              type="submit" 
-              className="w-full"
-              disabled={updateProfile.isPending || !form.formState.isValid}
-              data-testid="button-complete-setup"
+              return (
+                <motion.button
+                  key={key}
+                  type="button"
+                  whileTap={{ scale: 0.95 }}
+                  data-testid={`tab-${key}`}
+                  onClick={() =>
+                    form.setValue("fitnessGoal", key, { shouldValidate: true })
+                  }
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 rounded-2xl border-2 p-3 transition-colors",
+                    active ? goal.ring : "border-border bg-card hover:border-primary/30",
+                  )}
+                >
+                  <Icon className={cn("size-5", active ? goal.accent : "text-muted-foreground")} />
+                  <span className="text-[11px] font-medium leading-tight">{goal.title}</span>
+                </motion.button>
+              );
+            })}
+          </div>
+
+          {selectedGoal && (
+            <motion.p
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl bg-muted/60 p-3 text-xs leading-relaxed text-muted-foreground"
             >
-              {updateProfile.isPending ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Setting up...
-                </>
-              ) : (
-                'Complete Setup'
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+              {selectedGoal.detail}
+            </motion.p>
+          )}
+
+          {form.formState.errors.fitnessGoal && (
+            <p className="text-xs text-destructive">
+              {form.formState.errors.fitnessGoal.message}
+            </p>
+          )}
+        </motion.div>
+
+        {/* --------------------------------------------------- metas vivas */}
+        {calculated.bmr > 0 && (
+          <motion.div variants={staggerItem} className="surface-card-accent overflow-hidden">
+            {/* Meta calórica como herói: número grande em display, o resto
+                subordinado. Antes eram três blocos cinza do mesmo peso. */}
+            <div className="gradient-brand grain relative overflow-hidden px-5 py-7 text-center text-white">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -right-12 -top-14 size-40 rounded-full bg-white/20 blur-3xl"
+              />
+
+              <div className="relative">
+                <p className="section-label inline-flex items-center gap-1.5 text-white/75">
+                  <Zap className="size-3.5" />
+                  Meta calórica diária
+                </p>
+
+                <AnimatedNumber
+                  value={calculated.dailyGoal}
+                  className="display-number mt-1.5 block text-[3.25rem] leading-none"
+                  data-testid="text-calculated-goal"
+                />
+
+                <p className="mt-1.5 text-sm font-medium text-white/70">kcal por dia</p>
+              </div>
+            </div>
+
+            <div className="p-5">
+              <div className="grid grid-cols-2 gap-2.5">
+                <MiniStat
+                  label="Metabolismo basal"
+                  value={calculated.bmr}
+                  unit="kcal/dia"
+                  testId="text-calculated-bmr"
+                />
+                <MiniStat
+                  label="Gasto com atividade"
+                  value={activityCalories}
+                  unit="kcal/dia"
+                />
+              </div>
+
+              <p className="section-label mb-2.5 mt-5">Macronutrientes por dia</p>
+
+              <div className="grid grid-cols-3 gap-2">
+                <MacroChip
+                  label="Proteína"
+                  grams={calculated.macroTargets.protein}
+                  accent="bg-rose-500"
+                  className="text-rose-600 dark:text-rose-400"
+                />
+                <MacroChip
+                  label="Carboidrato"
+                  grams={calculated.macroTargets.carbs}
+                  accent="bg-sky-500"
+                  className="text-sky-600 dark:text-sky-400"
+                />
+                <MacroChip
+                  label="Gordura"
+                  grams={calculated.macroTargets.fat}
+                  accent="bg-amber-500"
+                  className="text-amber-600 dark:text-amber-400"
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        <motion.div variants={staggerItem}>
+          <ActionButton
+            type="submit"
+            variant="brand"
+            size="lg"
+            full
+            loading={updateProfile.isPending}
+            disabled={!form.formState.isValid}
+            data-testid="button-complete-setup"
+          >
+            {isEditing ? "Salvar alterações" : "Concluir cadastro"}
+          </ActionButton>
+        </motion.div>
+      </motion.form>
+    </div>
+  );
+}
+
+function Field({
+  id,
+  label,
+  placeholder,
+  step,
+  error,
+  register,
+  testId,
+}: {
+  id: string;
+  label: string;
+  placeholder: string;
+  step?: string;
+  error?: string;
+  register: ReturnType<ReturnType<typeof useForm<ProfileForm>>["register"]>;
+  testId: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type="number"
+        inputMode="decimal"
+        step={step}
+        placeholder={placeholder}
+        className="h-11 rounded-xl"
+        data-testid={testId}
+        {...register}
+      />
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  unit,
+  testId,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  testId?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+      <p className="truncate text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">
+        {label}
+      </p>
+      <AnimatedNumber
+        value={value}
+        className="display-number mt-1 block text-2xl"
+        data-testid={testId}
+      />
+      <p className="text-[10px] text-muted-foreground">{unit}</p>
+    </div>
+  );
+}
+
+function MacroChip({
+  label,
+  grams,
+  accent,
+  className,
+}: {
+  label: string;
+  grams: number;
+  /** Cor da barrinha superior, que identifica o macro de relance. */
+  accent: string;
+  className: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/30">
+      <div className={cn("h-1 w-full", accent)} />
+      <div className={cn("p-2.5 text-center", className)}>
+        <p className="text-[10px] font-medium text-muted-foreground">{label}</p>
+        <p className="display-number text-base">{grams}g</p>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,13 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { formatCalories } from "@/lib/nutrition-calculator";
+/**
+ * Resumo calórico do dia: anel de progresso e o balanço consumido/queimado.
+ */
 
-interface DailyProgressProps {
+import { Flame, Target, TrendingDown, Utensils } from "lucide-react";
+import { ProgressRing } from "@/components/ui/progress-ring";
+import { AnimatedNumber } from "@/components/ui/animated-number";
+import { cn } from "@/lib/utils";
+
+export interface DailyProgressProps {
   consumed: number;
   goal: number;
   remaining?: number;
@@ -9,85 +15,123 @@ interface DailyProgressProps {
   netCalories?: number;
 }
 
-export function DailyProgress({ consumed, goal, remaining, burned = 0, netCalories }: DailyProgressProps) {
-  const progressPercentage = Math.min(100, (consumed / goal) * 100);
-  const actualRemaining = remaining ?? Math.max(0, goal - consumed);
-  const actualNetCalories = netCalories ?? (consumed - burned);
-  
-  // Calculate stroke-dasharray for the progress ring
-  const circumference = 2 * Math.PI * 15.9155; // radius from SVG
-  const strokeDasharray = `${(progressPercentage / 100) * circumference}, ${circumference}`;
+export function DailyProgress({
+  consumed,
+  goal,
+  remaining,
+  burned = 0,
+  netCalories,
+}: DailyProgressProps) {
+  const safeGoal = goal > 0 ? goal : 2000;
+  const progress = consumed / safeGoal;
+
+  const actualRemaining = remaining ?? Math.max(0, safeGoal - consumed);
+  const actualNet = netCalories ?? consumed - burned;
+  const isOverGoal = consumed > safeGoal;
 
   return (
-    <Card>
-      <CardContent className="p-6">
-        <h2 className="text-lg font-semibold mb-4">Today's Progress</h2>
-        <div className="flex items-center justify-center mb-4">
-          <div className="relative w-32 h-32">
-            <svg className="w-32 h-32" viewBox="0 0 36 36">
-              <path 
-                className="text-muted stroke-current"
-                strokeWidth="3"
-                fill="none"
-                d="M18 2.0845
-                  a 15.9155 15.9155 0 0 1 0 31.831
-                  a 15.9155 15.9155 0 0 1 0 -31.831"
-              />
-              <path 
-                className="text-primary stroke-current transition-all duration-500 ease-in-out"
-                strokeWidth="3"
-                strokeDasharray={strokeDasharray}
-                strokeLinecap="round"
-                fill="none"
-                style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }}
-                d="M18 2.0845
-                  a 15.9155 15.9155 0 0 1 0 31.831
-                  a 15.9155 15.9155 0 0 1 0 -31.831"
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-primary" data-testid="text-consumed-calories">
-                  {formatCalories(consumed)}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  of {formatCalories(goal)}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-2 gap-4 text-center mb-4">
-          <div>
-            <div className="text-sm text-muted-foreground">Consumed</div>
-            <div className="font-semibold" data-testid="text-total-consumed">
-              {formatCalories(consumed)}
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Burned</div>
-            <div className="font-semibold text-orange-600" data-testid="text-calories-burned">
-              {formatCalories(burned)}
-            </div>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-2 gap-4 text-center">
-          <div>
-            <div className="text-sm text-muted-foreground">Net Calories</div>
-            <div className={`font-semibold ${actualNetCalories < goal ? 'text-green-600' : 'text-primary'}`} data-testid="text-net-calories">
-              {formatCalories(actualNetCalories)}
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Goal</div>
-            <div className="font-semibold" data-testid="text-daily-goal">
-              {formatCalories(goal)}
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <section className="surface-card p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="section-label">Progresso de hoje</h2>
+        <span
+          className={cn(
+            "rounded-full px-2.5 py-1 text-xs font-medium",
+            isOverGoal
+              ? "bg-destructive/10 text-destructive"
+              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+          )}
+        >
+          {isOverGoal
+            ? `${Math.round(consumed - safeGoal)} kcal acima`
+            : `${Math.round(actualRemaining)} kcal restantes`}
+        </span>
+      </div>
+
+      <div className="glow-under flex justify-center py-1">
+        <ProgressRing
+          value={progress}
+          size={172}
+          strokeWidth={13}
+          color={isOverGoal ? "hsl(var(--destructive))" : "url(#dailyGradient)"}
+        >
+          <svg width="0" height="0" className="absolute" aria-hidden>
+            <defs>
+              <linearGradient id="dailyGradient" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor="hsl(203 88% 53%)" />
+                <stop offset="100%" stopColor="hsl(190 90% 45%)" />
+              </linearGradient>
+            </defs>
+          </svg>
+
+          <AnimatedNumber
+            value={consumed}
+            className="display-number text-[2.75rem] leading-none text-foreground"
+            data-testid="text-consumed-calories"
+          />
+          <span className="mt-1 text-xs text-muted-foreground">
+            de {Math.round(safeGoal).toLocaleString("pt-BR")} kcal
+          </span>
+        </ProgressRing>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2.5">
+        <Stat
+          icon={<Utensils className="size-4" />}
+          label="Consumido"
+          value={consumed}
+          tone="text-foreground"
+          testId="text-total-consumed"
+        />
+        <Stat
+          icon={<Flame className="size-4" />}
+          label="Queimado"
+          value={burned}
+          tone="text-orange-500"
+          testId="text-calories-burned"
+        />
+        <Stat
+          icon={<TrendingDown className="size-4" />}
+          label="Saldo líquido"
+          value={actualNet}
+          tone={actualNet < safeGoal ? "text-emerald-500" : "text-primary"}
+          testId="text-net-calories"
+        />
+        <Stat
+          icon={<Target className="size-4" />}
+          label="Meta"
+          value={safeGoal}
+          tone="text-foreground"
+          testId="text-daily-goal"
+        />
+      </div>
+    </section>
+  );
+}
+
+function Stat({
+  icon,
+  label,
+  value,
+  tone,
+  testId,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  tone: string;
+  testId: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-muted/25 p-3">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        {icon}
+        <span className="truncate text-[11px] font-medium">{label}</span>
+      </div>
+      <AnimatedNumber
+        value={value}
+        className={cn("display-number mt-0.5 block text-2xl", tone)}
+        data-testid={testId}
+      />
+    </div>
   );
 }

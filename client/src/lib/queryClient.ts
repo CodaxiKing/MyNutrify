@@ -1,4 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { apiUrl } from "./api-url";
+import { authHeaders, handleUnauthorized } from "./auth-token";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -12,12 +14,18 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(url), {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      ...authHeaders(),
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
+
+  // Um 401 significa sessão morta: limpar o token faz o app voltar ao login.
+  handleUnauthorized(res);
 
   await throwIfResNotOk(res);
   return res;
@@ -29,12 +37,14 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const res = await fetch(apiUrl(queryKey.join("/") as string), {
+      headers: authHeaders(),
       credentials: "include",
     });
 
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+    if (res.status === 401) {
+      handleUnauthorized(res);
+      if (unauthorizedBehavior === "returnNull") return null;
     }
 
     await throwIfResNotOk(res);
@@ -46,8 +56,12 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
+      // Com `staleTime: Infinity` + sem refetch no foco, o app nunca atualizava
+      // depois do primeiro carregamento — um jejum iniciado no celular não
+      // aparecia ao voltar para a aba. 30s de frescor é o suficiente para
+      // evitar refetch em cascata sem congelar os dados.
+      refetchOnWindowFocus: true,
+      staleTime: 30_000,
       retry: false,
     },
     mutations: {

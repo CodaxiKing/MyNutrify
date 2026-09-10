@@ -18,6 +18,7 @@ import { useAnalyzeFood } from "@/hooks/use-nutrition-data";
 import { useAddMeal } from "@/hooks/use-nutrition-data";
 import type { FoodAnalysis, MealType } from "@/types/nutrition";
 import type { Food, Recipe } from "@shared/schema";
+import { apiFetch } from "@/lib/api-url";
 
 type FoodMode = 'menu' | 'camera' | 'barcode' | 'search' | 'recipes';
 
@@ -31,6 +32,7 @@ export default function FoodPage() {
   const [selectedMealType, setSelectedMealType] = useState<MealType>('lunch');
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [showAddToMealModal, setShowAddToMealModal] = useState(false);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
 
   // Camera AI Analysis
   const handleImageCapture = async (file: File) => {
@@ -94,7 +96,7 @@ export default function FoodPage() {
   // Barcode Detection
   const handleBarcodeDetected = async (barcode: string) => {
     try {
-      const response = await fetch('/api/food/barcode', {
+      const response = await apiFetch('/api/food/barcode', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -105,6 +107,7 @@ export default function FoodPage() {
       if (response.ok) {
         const food = await response.json();
         setSelectedFood(food);
+        setSelectedQuantity(1);
         setShowAddToMealModal(true);
         setMode('menu');
       } else {
@@ -127,6 +130,7 @@ export default function FoodPage() {
   // Food Search
   const handleFoodSelected = (food: Food, quantity: number) => {
     setSelectedFood(food);
+    setSelectedQuantity(quantity);
     setShowAddToMealModal(true);
     setMode('menu');
   };
@@ -298,6 +302,7 @@ export default function FoodPage() {
         isOpen={showAddToMealModal}
         onClose={() => { setShowAddToMealModal(false); setSelectedFood(null); }}
         food={selectedFood}
+        initialQuantity={selectedQuantity}
         onFoodAdded={handleFoodAdded}
       />
     </div>

@@ -3,24 +3,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Search, Plus, X } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
-interface Food {
-  id: string;
-  name: string;
-  caloriesPerServing: number;
-  servingSize: string;
-  carbs?: number | null;
-  protein?: number | null;
-  fat?: number | null;
-  source?: string | null;
-  createdAt?: Date | null;
-  imageUrl?: string | null;
-  confidence?: number | null;
-  barcode?: string | null;
-}
+import type { Food } from "@/types/nutrition";
+import { apiFetch } from "@/lib/api-url";
 
 interface FoodSearchProps {
   isOpen: boolean;
@@ -37,24 +24,24 @@ export function FoodSearch({ isOpen, onClose, onFoodSelected }: FoodSearchProps)
 
 
   useEffect(() => {
+    const controller = new AbortController();
+    const term = query.trim();
+    setResults([]);
+    setIsLoading(isOpen && term.length >= 2);
     const timeoutId = setTimeout(() => {
-      if (query && query.trim().length >= 2) {
-        searchFoods(query);
-      } else {
-        setResults([]);
-      }
+      if (isOpen && term.length >= 2) void searchFoods(term, controller.signal);
     }, 300);
 
-    return () => clearTimeout(timeoutId);
-  }, [query]);
+    return () => { clearTimeout(timeoutId); controller.abort(); };
+  }, [query, isOpen]);
 
-  const searchFoods = async (searchQuery: string) => {
+  const searchFoods = async (searchQuery: string, signal: AbortSignal) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/food/search?q=${encodeURIComponent(searchQuery)}&limit=20`);
+      const response = await apiFetch(`/api/food/search?q=${encodeURIComponent(searchQuery)}&limit=20`, { signal });
       if (response.ok) {
         const foods = await response.json();
-        setResults(foods);
+        if (!signal.aborted) setResults(foods);
       } else {
         toast({
           title: 'Erro na Busca',
@@ -63,6 +50,7 @@ export function FoodSearch({ isOpen, onClose, onFoodSelected }: FoodSearchProps)
         });
       }
     } catch (error) {
+      if (signal.aborted) return;
       console.error('Error searching foods:', error);
       toast({
         title: 'Erro na Busca',
@@ -70,7 +58,7 @@ export function FoodSearch({ isOpen, onClose, onFoodSelected }: FoodSearchProps)
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      if (!signal.aborted) setIsLoading(false);
     }
   };
 
@@ -87,10 +75,6 @@ export function FoodSearch({ isOpen, onClose, onFoodSelected }: FoodSearchProps)
       setQuery('');
       setResults([]);
       onClose();
-      toast({
-        title: 'Alimento Adicionado',
-        description: `${selectedFood.name} foi adicionado à refeição.`,
-      });
     }
   };
 
@@ -100,32 +84,6 @@ export function FoodSearch({ isOpen, onClose, onFoodSelected }: FoodSearchProps)
     setQuery('');
     setResults([]);
     onClose();
-  };
-
-  const getSourceBadgeColor = (source: string) => {
-    switch (source) {
-      case 'openfoodfacts':
-        return 'bg-green-100 text-green-800';
-      case 'ai':
-        return 'bg-blue-100 text-blue-800';
-      case 'manual':
-        return 'bg-purple-100 text-purple-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getSourceLabel = (source: string) => {
-    switch (source) {
-      case 'openfoodfacts':
-        return 'OpenFoodFacts';
-      case 'ai':
-        return 'IA';
-      case 'manual':
-        return 'Manual';
-      default:
-        return 'Banco de Dados';
-    }
   };
 
   return (
@@ -144,7 +102,8 @@ export function FoodSearch({ isOpen, onClose, onFoodSelected }: FoodSearchProps)
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Digite o nome do alimento..."
+              placeholder="Ex.: arroz cozido, feijão, frango..."
+              aria-label="Pesquisar alimento em português"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-10"
@@ -156,6 +115,15 @@ export function FoodSearch({ isOpen, onClose, onFoodSelected }: FoodSearchProps)
               </div>
             )}
           </div>
+
+          {!selectedFood && !query && <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">Pesquise em português, com ou sem acentos.</p>
+            <div className="flex flex-wrap gap-2">
+              {["Arroz cozido", "Feijão carioca", "Peito de frango", "Pão francês", "Banana"].map(food => (
+                <Button key={food} variant="outline" size="sm" onClick={() => setQuery(food)}>{food}</Button>
+              ))}
+            </div>
+          </div>}
 
           {/* Food Selection Modal */}
           {selectedFood && (
@@ -214,7 +182,7 @@ export function FoodSearch({ isOpen, onClose, onFoodSelected }: FoodSearchProps)
 
               {query.length >= 2 && results.length === 0 && !isLoading && (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  Nenhum alimento encontrado
+                  Nenhum alimento encontrado. Tente um nome mais simples, como “arroz” ou “frango”.
                 </p>
               )}
 
@@ -225,27 +193,21 @@ export function FoodSearch({ isOpen, onClose, onFoodSelected }: FoodSearchProps)
                     className="cursor-pointer hover:bg-muted/50 transition-colors"
                     onClick={() => handleFoodSelect(food)}
                   >
+                    {/* De onde o dado vem (TACO, OpenFoodFacts, USDA) e detalhe
+                        de implementacao: so polui a escolha de quem esta
+                        registrando o que comeu. */}
                     <CardContent className="p-3">
-                      <div className="flex justify-between items-start mb-1">
-                        <h3 className="font-medium text-sm">{food.name}</h3>
-                        {food.source && (
-                          <Badge 
-                            variant="secondary" 
-                            className={`text-xs ${getSourceBadgeColor(food.source)}`}
-                          >
-                            {getSourceLabel(food.source)}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-                        <div>{food.caloriesPerServing} cal</div>
-                        <div>{food.servingSize}</div>
-                        {food.carbs !== undefined && (
-                          <div>C: {food.carbs}g</div>
-                        )}
-                        {food.protein !== undefined && (
-                          <div>P: {food.protein}g</div>
-                        )}
+                      <h3 className="text-sm font-medium capitalize">{food.name}</h3>
+
+                      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                        <span className="font-semibold text-foreground">
+                          {Math.round(food.caloriesPerServing)} kcal
+                        </span>
+                        <span>{food.servingSize}</span>
+
+                        {food.protein != null && <span>P {Math.round(food.protein)}g</span>}
+                        {food.carbs != null && <span>C {Math.round(food.carbs)}g</span>}
+                        {food.fat != null && <span>G {Math.round(food.fat)}g</span>}
                       </div>
                     </CardContent>
                   </Card>

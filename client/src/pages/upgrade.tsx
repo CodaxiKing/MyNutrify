@@ -18,6 +18,7 @@ import {
   Trophy
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { apiFetch } from "@/lib/api-url";
 
 interface UserPlan {
   plan: 'free' | 'premium' | 'vip';
@@ -123,7 +124,7 @@ export default function UpgradePage() {
 
   const fetchUserPlan = async () => {
     try {
-      const response = await fetch('/api/user/limits');
+      const response = await apiFetch('/api/user/limits');
       if (response.ok) {
         const data = await response.json();
         setUserPlan(data);
@@ -136,7 +137,7 @@ export default function UpgradePage() {
   const handleUpgrade = async (plan: 'premium' | 'vip') => {
     setLoading(true);
     try {
-      const response = await fetch('/api/create-checkout-session', {
+      const response = await apiFetch('/api/create-checkout-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -181,7 +182,7 @@ export default function UpgradePage() {
   };
 
   return (
-    <div className="container mx-auto p-4 max-w-6xl">
+    <div className="page-content container mx-auto p-4 max-w-6xl">
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
           Upgrade para Premium

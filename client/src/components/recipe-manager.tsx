@@ -9,15 +9,8 @@ import { ChefHat, Plus, Trash2, Save, X, Search } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { FoodSearch } from './food-search';
 
-interface Food {
-  id: string;
-  name: string;
-  caloriesPerServing: number;
-  servingSize: string;
-  carbs?: number;
-  protein?: number;
-  fat?: number;
-}
+import type { Food } from "@/types/nutrition";
+import { apiFetch } from "@/lib/api-url";
 
 interface RecipeIngredient {
   id?: string;
@@ -156,7 +149,7 @@ export function RecipeManager({ isOpen, onClose, recipe, onRecipeSaved }: Recipe
         // Save ingredients if it's a new recipe
         if (!recipe?.id) {
           for (const ingredient of ingredients) {
-            await fetch(`/api/recipes/${savedRecipe.id}/ingredients`, {
+            await apiFetch(`/api/recipes/${savedRecipe.id}/ingredients`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',

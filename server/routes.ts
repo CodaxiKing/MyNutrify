@@ -4,19 +4,21 @@ import multer from "multer";
 import { storage } from "./storage";
 import { analyzeFoodImage } from "./services/openai";
 import { openFoodFactsService } from "./services/openfoodfacts";
-import { 
-  calculateBMR, 
-  calculateDailyCalorieGoal, 
+import { searchFoods as searchAllSources } from "./services/food-search";
+import { getTacoCategories, TACO_FOOD_COUNT } from "./services/taco";
+import {
+  calculateBMR,
+  calculateDailyCalorieGoal,
   calculateMacroTargets,
   calculateNutritionTotals,
-  validateNutritionParams 
+  validateNutritionParams
 } from "./services/nutrition";
-import { 
-  userProfileSchema, 
-  insertFoodSchema, 
-  insertMealEntrySchema, 
-  mealEntries, 
-  exercises, 
+import {
+  userProfileSchema,
+  insertFoodSchema,
+  insertMealEntrySchema,
+  mealEntries,
+  exercises,
   activityEntries,
   recipeSchema,
   recipeIngredientSchema,
@@ -32,127 +34,112 @@ import Stripe from "stripe";
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 // VIP system imports
-import { 
-  requireAuth, 
-  requireAIAnalysis, 
-  requirePremium, 
-  requireVIP,
+import {
+  requireAuth,
+  requireAIAnalysis,
   requireRecipeLimit,
-  requireAdvancedNutrition,
-  requireDetailedReports,
-  requireDataExport,
   incrementDailyAIUsage,
-  type AuthenticatedRequest
+  authed,
 } from "./middleware/permissions";
+import { registerWorkoutRoutes } from "./api/workouts";
+import { recalculateDailyBurn } from "./services/daily-summary";
+import { registerFastingRoutes } from "./api/fasting";
+import { registerAuthRoutes } from "./api/auth";
+import { registerStepRoutes } from "./api/steps";
 
 // Configure multer for image uploads
-const upload = multer({ 
+const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  storage: multer.memoryStorage() 
+  storage: multer.memoryStorage()
 });
 
-// Simple in-memory storage for user profile (for MVP testing)
-let currentUserProfile = {
-  id: "user-1",
-  firstName: "John",
-  lastName: "Doe",
-  email: "john.doe@example.com",
-  height: 175,
-  weight: 70,
-  age: 28,
-  gender: "male",
-  fitnessGoal: "maintain",
-  bmr: 1680,
-  dailyCalorieGoal: 1980,
-};
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  
+
+  // Autenticação primeiro: as demais rotas dependem de `req.user`.
+  registerAuthRoutes(app);
+
   // User profile routes
-  app.get('/api/user/profile', async (req: any, res) => {
-    try {
-      // Get user from database to include plan information
-      const user = await storage.getUserWithSubscription("user-1");
-      
-      // Normalize plan to prevent client crashes - ensure only valid plans are returned
-      const normalizePlan = (rawPlan: any): 'free' | 'premium' | 'vip' => {
+  app.get(
+    '/api/user/profile',
+    requireAuth,
+    authed(async (req, res) => {
+      try {
+        const user = await storage.getUserWithSubscription(req.user.id);
+
+        if (!user) {
+          return res.status(404).json({ message: "Usuário não encontrado" });
+        }
+
+        // Normaliza o plano para o client nunca receber um valor inesperado.
         const validPlans = ['free', 'premium', 'vip'] as const;
-        return validPlans.includes(rawPlan) ? rawPlan : 'free';
-      };
-      
-      if (user) {
-        const profileWithPlan = {
-          ...currentUserProfile,
-          plan: normalizePlan(user.plan)
-        };
-        res.json(profileWithPlan);
-      } else {
-        // Return current user profile with default plan
+        const plan = validPlans.includes(user.plan as any) ? user.plan : 'free';
+
         res.json({
-          ...currentUserProfile,
-          plan: 'free' as const
+          ...user,
+          plan,
+          macroTargets:
+            user.dailyCalorieGoal && user.fitnessGoal
+              ? calculateMacroTargets(
+                  user.dailyCalorieGoal,
+                  user.fitnessGoal as 'lose' | 'maintain' | 'gain',
+                )
+              : null,
         });
+      } catch (error) {
+        console.error("Error fetching user profile:", error);
+        res.status(500).json({ message: "Failed to fetch user profile" });
       }
-    } catch (error) {
-      console.error("Error fetching user profile:", error);
-      res.status(500).json({ message: "Failed to fetch user profile" });
-    }
-  });
+    }),
+  );
 
-  app.post('/api/user/profile', async (req, res) => {
-    try {
-      const profileData = userProfileSchema.parse(req.body);
-      
-      // Validate nutrition parameters
-      const validationErrors = validateNutritionParams(profileData);
-      if (validationErrors.length > 0) {
-        return res.status(400).json({ 
-          message: "Invalid profile data", 
-          errors: validationErrors 
+  app.post(
+    '/api/user/profile',
+    requireAuth,
+    authed(async (req, res) => {
+      try {
+        const profileData = userProfileSchema.parse(req.body);
+
+        const validationErrors = validateNutritionParams(profileData);
+        if (validationErrors.length > 0) {
+          return res.status(400).json({
+            message: "Invalid profile data",
+            errors: validationErrors,
+          });
+        }
+
+        const bmr = calculateBMR(profileData);
+        const dailyCalorieGoal = calculateDailyCalorieGoal(profileData);
+
+        const existing = await storage.getUser(req.user.id);
+
+        const user = await storage.upsertUser({
+          id: req.user.id,
+          height: profileData.height,
+          weight: profileData.weight,
+          age: profileData.age,
+          gender: profileData.gender,
+          fitnessGoal: profileData.fitnessGoal,
+          firstName: profileData.firstName ?? existing?.firstName ?? null,
+          lastName: profileData.lastName ?? existing?.lastName ?? null,
+          email: profileData.email ?? existing?.email ?? null,
+          bmr,
+          dailyCalorieGoal,
         });
-      }
 
-      // Calculate BMR and daily calorie goal
-      const bmr = calculateBMR(profileData);
-      const dailyCalorieGoal = calculateDailyCalorieGoal(profileData);
-      
-      // Create/update user in database
-      const userData = {
-        id: "user-1", // Use fixed ID for MVP
-        height: profileData.height,
-        weight: profileData.weight,
-        age: profileData.age,
-        gender: profileData.gender,
-        fitnessGoal: profileData.fitnessGoal,
-        firstName: profileData.firstName || currentUserProfile.firstName,
-        lastName: profileData.lastName || currentUserProfile.lastName,
-        email: profileData.email || currentUserProfile.email,
-        bmr,
-        dailyCalorieGoal,
-      };
-      
-      // Upsert user in database
-      const user = await storage.upsertUser(userData);
-      
-      // Update the in-memory profile for backwards compatibility
-      currentUserProfile = {
-        ...userData,
-      };
-      
-      const updatedProfile = {
-        ...user,
-        macroTargets: calculateMacroTargets(dailyCalorieGoal, profileData.fitnessGoal)
-      };
-      
-      res.json(updatedProfile);
-    } catch (error) {
-      console.error("Error updating user profile:", error);
-      res.status(400).json({ message: "Invalid profile data" });
-    }
-  });
+        res.json({
+          ...user,
+          macroTargets: calculateMacroTargets(dailyCalorieGoal, profileData.fitnessGoal),
+        });
+      } catch (error) {
+        console.error("Error updating user profile:", error);
+        res.status(400).json({ message: "Invalid profile data" });
+      }
+    }),
+  );
 
   // Food analysis routes - PROTECTED by AI analysis limit
-  app.post('/api/food/analyze', requireAuth, requireAIAnalysis, upload.single('image'), async (req: any, res) => {
+  app.post('/api/food/analyze', requireAuth, requireAIAnalysis, upload.single('image'), authed(async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No image provided" });
@@ -160,10 +147,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Convert buffer to base64
       const base64Image = req.file.buffer.toString('base64');
-      
+
       // Analyze with OpenAI
       const analysisResult = await analyzeFoodImage(base64Image);
-      
+
       // Create food entry in database
       const food = await storage.createFood({
         name: analysisResult.name,
@@ -184,24 +171,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Error analyzing food image:", error);
-      res.status(500).json({ 
-        message: "Failed to analyze food image", 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      res.status(500).json({
+        message: "Failed to analyze food image",
+        error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : "Unknown error"
       });
     }
-  });
+  }));
 
   // Meal entry routes
-  app.post('/api/meals', async (req, res) => {
+  app.post('/api/meals', requireAuth, authed(async (req, res) => {
     try {
       // For now, use mock user ID
-      const mockUserId = "user-1";
-      
+
       // Manually validate and transform the data
       const { mealType, date, quantity, totalCalories, totalCarbs, totalProtein, totalFat, foodId } = req.body;
-      
+
       const mealData = {
-        userId: mockUserId,
+        userId: req.user.id,
         mealType: mealType,
         date: new Date(date), // Convert string to Date
         quantity: quantity || 1,
@@ -211,7 +197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalFat: totalFat || 0,
         foodId: foodId || null
       };
-      
+
       // Directly insert to database bypassing schema validation
       const [mealEntry] = await db
         .insert(mealEntries)
@@ -220,7 +206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update daily summary
       const mealDate = new Date(mealData.date);
-      const todaysMeals = await storage.getMealsByUserAndDate(mockUserId, mealDate);
+      const todaysMeals = await storage.getMealsByUserAndDate(req.user.id, mealDate);
       const nutritionTotals = calculateNutritionTotals(todaysMeals.map(meal => ({
         totalCalories: meal.totalCalories,
         totalCarbs: meal.totalCarbs || 0,
@@ -229,7 +215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       })));
 
       await storage.upsertDailySummary({
-        userId: mockUserId,
+        userId: req.user.id,
         date: mealDate,
         totalCalories: nutritionTotals.calories,
         totalCarbs: nutritionTotals.carbs,
@@ -243,25 +229,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error creating meal entry:", error);
       res.status(400).json({ message: "Invalid meal data" });
     }
-  });
+  }));
 
-  app.get('/api/meals', async (req, res) => {
+  app.get('/api/meals', requireAuth, authed(async (req, res) => {
     try {
       const { date, startDate, endDate } = req.query;
-      const mockUserId = "user-1";
 
       let meals;
       if (startDate && endDate) {
         meals = await storage.getMealsByUserAndDateRange(
-          mockUserId, 
-          new Date(startDate as string), 
+          req.user.id,
+          new Date(startDate as string),
           new Date(endDate as string)
         );
       } else if (date) {
-        meals = await storage.getMealsByUserAndDate(mockUserId, new Date(date as string));
+        meals = await storage.getMealsByUserAndDate(req.user.id, new Date(date as string));
       } else {
         // Default to today
-        meals = await storage.getMealsByUserAndDate(mockUserId, new Date());
+        meals = await storage.getMealsByUserAndDate(req.user.id, new Date());
       }
 
       res.json(meals);
@@ -269,14 +254,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching meals:", error);
       res.status(500).json({ message: "Failed to fetch meals" });
     }
-  });
+  }));
 
-  app.delete('/api/meals/:id', async (req, res) => {
+  app.delete('/api/meals/:id', requireAuth, authed(async (req, res) => {
     try {
       const { id } = req.params;
-      const mockUserId = "user-1";
-      
-      const success = await storage.deleteMealEntry(id, mockUserId);
+
+      const success = await storage.deleteMealEntry(id, req.user.id);
       if (success) {
         res.json({ message: "Meal deleted successfully" });
       } else {
@@ -286,17 +270,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error deleting meal:", error);
       res.status(500).json({ message: "Failed to delete meal" });
     }
-  });
+  }));
 
   // Daily summary routes
-  app.get('/api/daily-summary', async (req, res) => {
+  app.get('/api/daily-summary', requireAuth, authed(async (req, res) => {
     try {
       const { date } = req.query;
-      const mockUserId = "user-1";
       const targetDate = date ? new Date(date as string) : new Date();
 
-      const summary = await storage.getDailySummary(mockUserId, targetDate);
-      
+      const summary = await storage.getDailySummary(req.user.id, targetDate);
+
       if (!summary) {
         // Return empty summary if no data exists
         res.json({
@@ -313,28 +296,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching daily summary:", error);
       res.status(500).json({ message: "Failed to fetch daily summary" });
     }
-  });
+  }));
 
-  app.get('/api/weekly-summary', async (req, res) => {
+  app.get('/api/weekly-summary', requireAuth, authed(async (req, res) => {
     try {
-      const mockUserId = "user-1";
       const today = new Date();
       const oneWeekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-      const summaries = await storage.getDailySummariesForRange(mockUserId, oneWeekAgo, today);
-      
+      const summaries = await storage.getDailySummariesForRange(req.user.id, oneWeekAgo, today);
+
       res.json(summaries);
     } catch (error) {
       console.error("Error fetching weekly summary:", error);
       res.status(500).json({ message: "Failed to fetch weekly summary" });
     }
-  });
+  }));
 
   // Exercise routes
   app.get('/api/exercises', async (req, res) => {
     try {
       const { category } = req.query;
-      
+
       // First, populate database with common exercises if empty
       const existingExercises = await storage.getAllExercises();
       if (existingExercises.length === 0) {
@@ -342,14 +324,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.createExercise(exercise);
         }
       }
-      
+
       let exercises;
       if (category) {
         exercises = await storage.searchExercises('', category as string);
       } else {
         exercises = await storage.getAllExercises();
       }
-      
+
       res.json(exercises);
     } catch (error) {
       console.error("Error fetching exercises:", error);
@@ -360,11 +342,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/exercises/search', async (req, res) => {
     try {
       const { q: query, category } = req.query;
-      
+
       if (!query) {
-        return res.status(400).json({ message: "Query parameter is required" });
+        return res.status(400).json({ message: "Informe o nome do alimento" });
       }
-      
+
       const exercises = await storage.searchExercises(query as string, category as string);
       res.json(exercises);
     } catch (error) {
@@ -374,47 +356,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Activity routes
-  app.post('/api/activities', async (req, res) => {
+  app.post('/api/activities', requireAuth, authed(async (req, res) => {
     try {
-      const mockUserId = "user-1";
       const { exerciseId, customExerciseName, duration, intensity, notes, metValue } = req.body;
-      
+
       // Get user weight for calorie calculation
-      const userWeight = currentUserProfile.weight || 70; // Default 70kg if not set
-      
+      // Sem peso no perfil, 70kg e o fallback para o calculo de MET.
+      const userWeight = req.user.weight ?? 70;
+
       // Calculate calories burned
       let caloriesBurned = 0;
       let finalMetValue = metValue;
-      
+
       if (exerciseId) {
         const exercise = await storage.getExerciseById(exerciseId);
         if (exercise) {
           finalMetValue = exercise.metValue;
         }
       }
-      
+
       if (finalMetValue) {
         const calculation = calculateCaloriesBurned(finalMetValue, userWeight, duration, intensity || 'moderate');
         caloriesBurned = calculation.caloriesBurned;
       }
-      
+
       // Validate activity data
       const validationErrors = validateActivityData({
         duration,
         intensity: intensity || 'moderate',
         caloriesBurned
       });
-      
+
       if (validationErrors.length > 0) {
-        return res.status(400).json({ 
-          message: "Invalid activity data", 
-          errors: validationErrors 
+        return res.status(400).json({
+          message: "Invalid activity data",
+          errors: validationErrors
         });
       }
-      
+
       // Create activity entry
       const activityData = {
-        userId: mockUserId,
+        userId: req.user.id,
         exerciseId: exerciseId || null,
         customExerciseName: customExerciseName || null,
         duration,
@@ -423,53 +405,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         date: new Date(),
         notes: notes || null
       };
-      
+
       const activityEntry = await storage.createActivityEntry(activityData);
-      
-      // Update daily summary with burned calories
-      const today = new Date();
-      const existingSummary = await storage.getDailySummary(mockUserId, today);
-      const todaysActivities = await storage.getActivitiesByUserAndDate(mockUserId, today);
-      const totalCaloriesBurned = todaysActivities.reduce((sum, activity) => sum + activity.caloriesBurned, 0);
-      
-      const summaryData = {
-        userId: mockUserId,
-        date: today,
-        totalCalories: existingSummary?.totalCalories || 0,
-        totalCarbs: existingSummary?.totalCarbs || 0,
-        totalProtein: existingSummary?.totalProtein || 0,
-        totalFat: existingSummary?.totalFat || 0,
-        mealCount: existingSummary?.mealCount || 0,
-        caloriesBurned: totalCaloriesBurned,
-        netCalories: (existingSummary?.totalCalories || 0) - totalCaloriesBurned
-      };
-      
-      await storage.upsertDailySummary(summaryData);
-      
+
+      await recalculateDailyBurn(req.user.id);
+
       res.json(activityEntry);
     } catch (error) {
       console.error("Error creating activity entry:", error);
       res.status(500).json({ message: "Failed to create activity entry" });
     }
-  });
+  }));
 
-  app.get('/api/activities', async (req, res) => {
+  app.get('/api/activities', requireAuth, authed(async (req, res) => {
     try {
       const { date, startDate, endDate } = req.query;
-      const mockUserId = "user-1";
 
       let activities;
       if (startDate && endDate) {
         activities = await storage.getActivitiesByUserAndDateRange(
-          mockUserId, 
-          new Date(startDate as string), 
+          req.user.id,
+          new Date(startDate as string),
           new Date(endDate as string)
         );
       } else if (date) {
-        activities = await storage.getActivitiesByUserAndDate(mockUserId, new Date(date as string));
+        activities = await storage.getActivitiesByUserAndDate(req.user.id, new Date(date as string));
       } else {
         // Default to today
-        activities = await storage.getActivitiesByUserAndDate(mockUserId, new Date());
+        activities = await storage.getActivitiesByUserAndDate(req.user.id, new Date());
       }
 
       res.json(activities);
@@ -477,37 +440,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching activities:", error);
       res.status(500).json({ message: "Failed to fetch activities" });
     }
-  });
+  }));
 
-  app.delete('/api/activities/:id', async (req, res) => {
+  app.delete('/api/activities/:id', requireAuth, authed(async (req, res) => {
     try {
       const { id } = req.params;
-      const mockUserId = "user-1";
-      
-      const success = await storage.deleteActivityEntry(id, mockUserId);
+
+      const success = await storage.deleteActivityEntry(id, req.user.id);
       if (success) {
-        // Update daily summary after deletion
-        const today = new Date();
-        const todaysActivities = await storage.getActivitiesByUserAndDate(mockUserId, today);
-        const totalCaloriesBurned = todaysActivities.reduce((sum, activity) => sum + activity.caloriesBurned, 0);
-        
-        const existingSummary = await storage.getDailySummary(mockUserId, today);
-        if (existingSummary) {
-          const summaryData = {
-            userId: mockUserId,
-            date: today,
-            totalCalories: existingSummary.totalCalories || 0,
-            totalCarbs: existingSummary.totalCarbs || 0,
-            totalProtein: existingSummary.totalProtein || 0,
-            totalFat: existingSummary.totalFat || 0,
-            mealCount: existingSummary.mealCount || 0,
-            caloriesBurned: totalCaloriesBurned,
-            netCalories: (existingSummary.totalCalories || 0) - totalCaloriesBurned
-          };
-          
-          await storage.upsertDailySummary(summaryData);
-        }
-        
+        await recalculateDailyBurn(req.user.id);
         res.json({ message: "Activity deleted successfully" });
       } else {
         res.status(404).json({ message: "Activity not found" });
@@ -516,79 +457,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error deleting activity:", error);
       res.status(500).json({ message: "Failed to delete activity" });
     }
-  });
+  }));
 
   // Food search routes
   app.get('/api/food/search', async (req, res) => {
     try {
       const { q: query, limit } = req.query;
-      
+
       if (!query || typeof query !== 'string') {
         return res.status(400).json({ message: "Query parameter is required" });
       }
 
-      const validatedQuery = foodSearchSchema.parse({ 
-        query, 
-        limit: limit ? parseInt(limit as string) : undefined 
+      const validated = foodSearchSchema.parse({
+        query,
+        limit: limit ? parseInt(limit as string) : undefined,
       });
-      
-      // Search in local database first
-      const localResults = await storage.searchFoods(validatedQuery.query, validatedQuery.limit);
-      
-      // If we have less than the limit from local search, search OpenFoodFacts
-      let externalResults: any[] = [];
-      if (localResults.length < validatedQuery.limit) {
-        const remainingLimit = validatedQuery.limit - localResults.length;
-        const openFoodFactsResults = await openFoodFactsService.searchByName(validatedQuery.query, remainingLimit);
-        
-        // Save external results to local database for future searches and get proper IDs
-        for (const externalFood of openFoodFactsResults) {
-          try {
-            const savedFood = await storage.createFood(externalFood);
-            externalResults.push(savedFood);
-          } catch (error) {
-            // If food already exists, try to find it by name and barcode
-            console.log("Food might already exist, attempting to find existing:", error);
-            try {
-              if (externalFood.barcode) {
-                const existingFood = await storage.getFoodByBarcode(externalFood.barcode);
-                if (existingFood) {
-                  externalResults.push(existingFood);
-                }
-              }
-            } catch (findError) {
-              console.log("Could not find existing food:", findError);
-            }
-          }
-        }
-      }
-      
-      // Combine and return results
-      const allResults = [...localResults, ...externalResults];
-      res.json(allResults.slice(0, validatedQuery.limit));
+
+      // TACO, alimentos salvos e produtos com nome em português.
+      const results = await searchAllSources(validated.query, validated.limit);
+      res.json(results);
     } catch (error) {
       console.error("Error searching foods:", error);
-      res.status(500).json({ message: "Failed to search foods" });
+      res.status(500).json({ message: "Não foi possível buscar alimentos" });
     }
+  });
+
+  /** Fontes de dados nutricionais ativas, para a interface indicar a origem. */
+  app.get('/api/food/sources', (_req, res) => {
+    res.json({
+      taco: { enabled: true, count: TACO_FOOD_COUNT, categories: getTacoCategories() },
+      openfoodfacts: { enabled: true },
+      usda: { enabled: false },
+    });
   });
 
   app.post('/api/food/barcode', async (req, res) => {
     try {
       const { barcode } = barcodeSchema.parse(req.body);
-      
+
       // Check if we already have this barcode in our database
       let food = await storage.getFoodByBarcode(barcode);
-      
+
       if (!food) {
         // Search OpenFoodFacts for the barcode
         const externalFood = await openFoodFactsService.searchByBarcode(barcode);
-        
+
         if (externalFood) {
           // Save to local database
           food = await storage.createFood(externalFood);
         }
       }
-      
+
       if (food) {
         res.json(food);
       } else {
@@ -601,7 +520,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Recipe routes
-  app.get('/api/recipes', requireAuth, async (req: any, res) => {
+  app.get('/api/recipes', requireAuth, authed(async (req, res) => {
     try {
       const recipes = await storage.getUserRecipes(req.user.id);
       res.json(recipes);
@@ -609,25 +528,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching recipes:", error);
       res.status(500).json({ message: "Failed to fetch recipes" });
     }
-  });
+  }));
 
-  app.get('/api/recipes/:id', async (req, res) => {
+  app.get('/api/recipes/:id', requireAuth, authed(async (req, res) => {
     try {
       const { id } = req.params;
       const recipe = await storage.getRecipeWithIngredients(id);
-      
-      if (recipe) {
-        res.json(recipe);
-      } else {
-        res.status(404).json({ message: "Recipe not found" });
+
+      // 404 em vez de 403: não vaza a existência de receitas de outros usuários.
+      if (!recipe || recipe.userId !== req.user.id) {
+        return res.status(404).json({ message: "Recipe not found" });
       }
+
+      res.json(recipe);
     } catch (error) {
       console.error("Error fetching recipe:", error);
       res.status(500).json({ message: "Failed to fetch recipe" });
     }
-  });
+  }));
 
-  app.post('/api/recipes', requireAuth, requireRecipeLimit, async (req: any, res) => {
+  app.post('/api/recipes', requireAuth, requireRecipeLimit, authed(async (req, res) => {
     try {
       const recipeData = recipeSchema.parse({
         ...req.body,
@@ -640,25 +560,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error creating recipe:", error);
       res.status(400).json({ message: "Invalid recipe data" });
     }
-  });
+  }));
 
-  app.put('/api/recipes/:id', async (req, res) => {
+  app.put('/api/recipes/:id', requireAuth, authed(async (req, res) => {
     try {
       const { id } = req.params;
       const updates = recipeSchema.partial().parse(req.body);
-      
-      const recipe = await storage.updateRecipe(id, updates);
+
+      const existing = await storage.getRecipeById(id);
+      if (!existing || existing.userId !== req.user.id) {
+        return res.status(404).json({ message: "Recipe not found" });
+      }
+
+      // userId nunca vem do corpo da requisição.
+      const { userId: _ignoredUserId, ...safeUpdates } = updates;
+      const recipe = await storage.updateRecipe(id, safeUpdates);
       res.json(recipe);
     } catch (error) {
       console.error("Error updating recipe:", error);
       res.status(400).json({ message: "Invalid recipe data" });
     }
-  });
+  }));
 
-  app.delete('/api/recipes/:id', requireAuth, async (req: any, res) => {
+  app.delete('/api/recipes/:id', requireAuth, authed(async (req, res) => {
     try {
       const { id } = req.params;
-      
+
       const success = await storage.deleteRecipe(id, req.user.id);
       if (success) {
         res.json({ message: "Recipe deleted successfully" });
@@ -669,23 +596,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error deleting recipe:", error);
       res.status(500).json({ message: "Failed to delete recipe" });
     }
-  });
+  }));
 
   // Recipe ingredient routes
-  app.get('/api/recipes/:id/ingredients', async (req, res) => {
+  app.get('/api/recipes/:id/ingredients', requireAuth, authed(async (req, res) => {
     try {
       const { id } = req.params;
+
+      const recipe = await storage.getRecipeById(id);
+      if (!recipe || recipe.userId !== req.user.id) {
+        return res.status(404).json({ message: "Recipe not found" });
+      }
+
       const ingredients = await storage.getRecipeIngredients(id);
       res.json(ingredients);
     } catch (error) {
       console.error("Error fetching recipe ingredients:", error);
       res.status(500).json({ message: "Failed to fetch recipe ingredients" });
     }
-  });
+  }));
 
-  app.post('/api/recipes/:id/ingredients', async (req, res) => {
+  app.post('/api/recipes/:id/ingredients', requireAuth, authed(async (req, res) => {
     try {
       const { id: recipeId } = req.params;
+
+      const recipe = await storage.getRecipeById(recipeId);
+      if (!recipe || recipe.userId !== req.user.id) {
+        return res.status(404).json({ message: "Recipe not found" });
+      }
+
       const ingredientData = recipeIngredientSchema.parse({
         ...req.body,
         recipeId
@@ -697,15 +636,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error adding recipe ingredient:", error);
       res.status(400).json({ message: "Invalid ingredient data" });
     }
-  });
+  }));
 
-  app.put('/api/recipe-ingredients/:id', async (req, res) => {
+  app.put('/api/recipe-ingredients/:id', requireAuth, authed(async (req, res) => {
     try {
       const { id } = req.params;
       const { quantity } = req.body;
-      
+
       if (typeof quantity !== 'number' || quantity <= 0) {
         return res.status(400).json({ message: "Valid quantity is required" });
+      }
+
+      if (!(await storage.userOwnsRecipeIngredient(id, req.user.id))) {
+        return res.status(404).json({ message: "Ingredient not found" });
       }
 
       const ingredient = await storage.updateRecipeIngredient(id, quantity);
@@ -714,12 +657,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error updating recipe ingredient:", error);
       res.status(400).json({ message: "Failed to update ingredient" });
     }
-  });
+  }));
 
-  app.delete('/api/recipe-ingredients/:id', async (req, res) => {
+  app.delete('/api/recipe-ingredients/:id', requireAuth, authed(async (req, res) => {
     try {
       const { id } = req.params;
-      
+
       const success = await storage.deleteRecipeIngredient(id);
       if (success) {
         res.json({ message: "Ingredient removed successfully" });
@@ -730,12 +673,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error removing recipe ingredient:", error);
       res.status(500).json({ message: "Failed to remove ingredient" });
     }
-  });
+  }));
 
   // === VIP SUBSCRIPTION ROUTES ===
-  
+
   // Get user plan info
-  app.get('/api/user/plan', requireAuth, async (req: any, res) => {
+  app.get('/api/user/plan', requireAuth, authed(async (req, res) => {
     try {
       const user = await storage.getUserWithSubscription(req.user.id);
       if (!user) {
@@ -755,22 +698,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching user plan:", error);
       res.status(500).json({ message: "Failed to fetch plan info" });
     }
-  });
+  }));
 
   // Create subscription checkout session
-  app.post('/api/create-checkout-session', requireAuth, async (req: any, res) => {
+  app.post('/api/create-checkout-session', requireAuth, authed(async (req, res) => {
     try {
       if (!stripe) {
         return res.status(500).json({ message: "Stripe não configurado" });
       }
 
       const { plan, billing } = req.body; // plan: 'premium' | 'vip', billing: 'monthly' | 'yearly'
-      
+
       if (!plan || !billing) {
         return res.status(400).json({ message: "Plan and billing cycle required" });
       }
 
-      const priceId = billing === 'monthly' 
+      const priceId = billing === 'monthly'
         ? (plan === 'premium' ? 'price_premium_monthly' : 'price_vip_monthly')
         : (plan === 'premium' ? 'price_premium_yearly' : 'price_vip_yearly');
 
@@ -794,15 +737,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // trial_period_days: plan === 'premium' ? 7 : 14, // Premium: 7 dias, VIP: 14 dias // Feature não disponível na versão gratuita
       });
 
-      res.json({ 
+      res.json({
         sessionId: session.id,
-        url: session.url 
+        url: session.url
       });
     } catch (error) {
       console.error("Error creating checkout session:", error);
       res.status(500).json({ message: "Erro ao criar sessão de checkout" });
     }
-  });
+  }));
 
   // Webhook do Stripe para processar eventos
   app.post('/api/stripe-webhook', async (req, res) => {
@@ -826,7 +769,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         case 'checkout.session.completed':
           const session = event.data.object as Stripe.Checkout.Session;
           const { userId, plan } = session.metadata || {};
-          
+
           if (userId && plan) {
             // Update user plan
             await storage.updateUserPlan(userId, plan as 'premium' | 'vip');
@@ -841,7 +784,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         case 'customer.subscription.updated':
         case 'customer.subscription.deleted':
           const subscription = event.data.object as Stripe.Subscription;
-          
+
           // Find user by Stripe customer ID
           // TODO: Implement reverse lookup when needed
           break;
@@ -861,49 +804,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/elevation', async (req, res) => {
     try {
       const { locations }: { locations: ElevationPoint[] } = req.body;
-      
+
       if (!Array.isArray(locations) || locations.length === 0) {
-        return res.status(400).json({ 
-          message: "Invalid request: locations array is required" 
+        return res.status(400).json({
+          message: "Invalid request: locations array is required"
         });
       }
-      
+
       // Validate coordinates
       for (const location of locations) {
         if (typeof location.lat !== 'number' || typeof location.lon !== 'number' ||
             Math.abs(location.lat) > 90 || Math.abs(location.lon) > 180) {
-          return res.status(400).json({ 
-            message: "Invalid coordinates: lat must be -90 to 90, lon must be -180 to 180" 
+          return res.status(400).json({
+            message: "Invalid coordinates: lat must be -90 to 90, lon must be -180 to 180"
           });
         }
       }
-      
+
       // Limit batch size to prevent abuse
       if (locations.length > 100) {
-        return res.status(400).json({ 
-          message: "Too many locations: maximum 100 per request" 
+        return res.status(400).json({
+          message: "Too many locations: maximum 100 per request"
         });
       }
-      
+
       const elevationData = await elevationService.getElevations(locations);
-      
+
       res.json({
         success: true,
         results: elevationData,
         count: elevationData.length
       });
-      
+
     } catch (error) {
       console.error("Elevation service error:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         message: "Failed to fetch elevation data",
-        error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        error: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.message : String(error)) : undefined
       });
     }
   });
 
   // Get subscription limits/usage
-  app.get('/api/user/limits', requireAuth, async (req: any, res) => {
+  app.get('/api/user/limits', requireAuth, authed(async (req, res) => {
     try {
       const user = await storage.getUserWithSubscription(req.user.id);
       if (!user) {
@@ -927,8 +870,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching user limits:", error);
       res.status(500).json({ message: "Failed to fetch limits" });
     }
-  });
+  }));
 
   const httpServer = createServer(app);
+  // Biblioteca de exercicios, planos de treino e jejum intermitente.
+  registerWorkoutRoutes(app);
+  registerFastingRoutes(app);
+  registerStepRoutes(app);
+
   return httpServer;
 }

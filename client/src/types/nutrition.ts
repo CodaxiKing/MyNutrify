@@ -105,3 +105,13 @@ export interface ActivityEntry {
   createdAt?: Date;
   exercise?: Exercise;
 }
+
+/**
+ * Alimento como o servidor devolve — a linha da tabela `foods`.
+ *
+ * Antes cada componente declarava a sua própria `interface Food` com
+ * opcionalidades diferentes (`number | undefined` vs `number | null`), o que
+ * fazia o TypeScript tratá-las como tipos incompatíveis ao passar callbacks
+ * entre componentes. Agora todos importam esta.
+ */
+export type { Food } from "@shared/schema";

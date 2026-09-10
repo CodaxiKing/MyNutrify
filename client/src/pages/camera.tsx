@@ -32,8 +32,8 @@ export default function Camera() {
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
-        title: "Analysis Failed",
-        description: "Failed to analyze the food image. Please try again.",
+        title: "Não foi possível analisar",
+        description: "Não foi possível analisar a foto. Tente novamente.",
         variant: "destructive",
       });
     }
@@ -56,7 +56,7 @@ export default function Camera() {
       });
 
       toast({
-        title: "Meal Added",
+        title: "Refeição adicionada",
         description: `${analysisResult.name} has been added to your ${selectedMealType}.`,
       });
 
@@ -76,7 +76,7 @@ export default function Camera() {
   };
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-4 page-content">
       {!analysisResult ? (
         <CameraInterface 
           onImageCapture={handleImageCapture}

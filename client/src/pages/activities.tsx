@@ -15,6 +15,7 @@ import { useActivitiesForDate } from "@/hooks/use-nutrition-data";
 
 // Import GPS utilities and running tracker
 import { GPSTracker, NRCRunningTracker as RunningTracker, type UserRunningProfile, type GPSStatus, type RunSession } from "@/lib/gps-utils";
+import { apiFetch } from "@/lib/api-url";
 
 type ActivityMode = 'menu' | 'running' | 'exercises';
 
@@ -247,7 +248,7 @@ export default function ActivitiesPage() {
     // Save the run as an activity
     if (finalStats.distance > 0.1) { // Only save if distance > 100m
       try {
-        const response = await fetch('/api/activities', {
+        const response = await apiFetch('/api/activities', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -378,7 +379,7 @@ export default function ActivitiesPage() {
 
   if (mode !== 'menu') {
     return (
-      <div className="space-y-4 pb-24 pt-4">
+      <div className="space-y-4 page-content pt-4">
         <div className="px-4">
           <Button 
             variant="outline" 
@@ -394,7 +395,7 @@ export default function ActivitiesPage() {
   }
 
   return (
-    <div className="p-4 space-y-6 pb-24">
+    <div className="p-4 space-y-6 page-content">
       {/* Header */}
       <div className="text-center space-y-2">
         <h1 className="text-2xl font-bold text-foreground">Atividades</h1>

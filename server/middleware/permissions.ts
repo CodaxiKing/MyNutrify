@@ -1,236 +1,253 @@
 /**
- * Middleware de verificação de permissões VIP
- * Protege recursos premium baseado no plano do usuário
+ * Middleware de autenticação e verificação de permissões VIP.
+ *
+ * Protege recursos premium de acordo com o plano do usuário e garante que todo
+ * handler protegido receba `req.user` já resolvido a partir do banco.
  */
 
-import { Request, Response, NextFunction } from 'express';
+import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { storage } from '../storage';
-import { PLAN_FEATURES, canUseFeature, UserPlan } from '@shared/plans';
+import { PLAN_FEATURES, canUseFeature, type UserPlan } from '@shared/plans';
+import { extractBearerToken, hashToken, sessionExpiry } from '../services/auth';
 
-// Extend Request to include user with plan
+// Estende o Request do Express com o usuário resolvido pelo requireAuth.
+// `user` é opcional aqui porque nem toda rota passa pelo middleware — quem
+// passa usa `AuthenticatedRequest` e não precisa checar null.
 declare global {
   namespace Express {
     interface User {
       id: string;
       plan: UserPlan;
+      weight: number | null;
       aiAnalysisUsedToday: number;
       lastAiAnalysisReset: Date;
+    }
+
+    interface Request {
+      user?: User;
     }
   }
 }
 
+/**
+ * Request garantidamente autenticado.
+ *
+ * `Express.Request['user']` é opcional no tipo base do Express, então handlers
+ * que rodam depois do `requireAuth` usam este tipo para acessar `req.user` sem
+ * checagem de null. Use sempre junto de `authed()` ao registrar a rota.
+ */
 export interface AuthenticatedRequest extends Request {
   user: Express.User;
 }
 
 /**
- * Middleware básico para verificar se usuário está autenticado
+ * Adapta um handler que espera `AuthenticatedRequest` para a assinatura que o
+ * Express aceita. Só use em rotas que passam pelo `requireAuth` antes.
  */
-export async function requireAuth(req: Request, res: Response, next: NextFunction) {
+export function authed(
+  handler: (req: AuthenticatedRequest, res: Response, next: NextFunction) => unknown,
+): RequestHandler {
+  return (req, res, next) => {
+    void Promise.resolve(handler(req as AuthenticatedRequest, res, next)).catch(next);
+  };
+}
+
+/**
+ * Resolve o usuário a partir do token de sessão e o anexa em `req.user`.
+ *
+ * O token vem no cabeçalho `Authorization: Bearer <token>`. Responde 401 —
+ * nunca 500 — quando o token falta, expirou ou não corresponde a nenhuma
+ * sessão, para o client saber que precisa mandar o usuário ao login.
+ */
+export const requireAuth: RequestHandler = async (req, res, next) => {
   try {
-    // Para demonstração, usar user-1 mas carregar dados reais do DB
-    const userId = 'user-1';
-    
-    let user = await storage.getUserWithSubscription(userId);
-    
-    if (!user) {
-      // Criar usuário se não existir (para demonstração)
-      await storage.createUser({
-        id: userId,
-        firstName: 'Demo',
-        lastName: 'User',
-        email: 'demo@mynutrify.app',
-        age: 30,
-        weight: 70,
-        height: 170,
-        activityLevel: 'MODERATELY_ACTIVE',
-        fitnessGoal: 'MAINTAIN_WEIGHT',
-        gender: 'male'
-      });
-      
-      user = await storage.getUserWithSubscription(userId);
+    const token = extractBearerToken(req.headers.authorization);
+
+    if (!token) {
+      return res.status(401).json({ error: 'UNAUTHENTICATED', message: 'Faça login para continuar' });
     }
-    
-    if (!user) {
-      return res.status(500).json({ message: 'Erro ao carregar usuário' });
+
+    const session = await storage.getAuthSessionByTokenHash(hashToken(token));
+
+    if (!session) {
+      return res.status(401).json({ error: 'INVALID_TOKEN', message: 'Sessão inválida' });
     }
-    
-    // Carregar dados reais do usuário
-    (req as AuthenticatedRequest).user = {
+
+    if (session.expiresAt.getTime() <= Date.now()) {
+      // Limpa a sessão morta em vez de deixá-la acumulando no banco.
+      await storage.deleteAuthSession(session.tokenHash);
+      return res.status(401).json({ error: 'SESSION_EXPIRED', message: 'Sua sessão expirou' });
+    }
+
+    const user = await storage.getUserWithSubscription(session.userId);
+
+    if (!user) {
+      // A conta sumiu (apagada) mas a sessão sobreviveu.
+      await storage.deleteAuthSession(session.tokenHash);
+      return res.status(401).json({ error: 'INVALID_TOKEN', message: 'Sessão inválida' });
+    }
+
+    // Renova a validade a cada uso: quem usa o app não é deslogado.
+    void storage
+      .touchAuthSession(session.id, sessionExpiry())
+      .catch((error) => console.error('Falha ao renovar a sessão:', error));
+
+    req.user = {
       id: user.id,
-      plan: user.plan || 'free',
-      aiAnalysisUsedToday: user.aiAnalysisUsedToday || 0,
-      lastAiAnalysisReset: user.lastAiAnalysisReset || new Date()
+      plan: user.plan ?? 'free',
+      weight: user.weight ?? null,
+      aiAnalysisUsedToday: user.aiAnalysisUsedToday ?? 0,
+      lastAiAnalysisReset: user.lastAiAnalysisReset ?? new Date(),
     };
-    
+
     next();
   } catch (error) {
     console.error('Error in requireAuth:', error);
     res.status(500).json({ message: 'Erro de autenticação' });
   }
-}
+};
 
 /**
- * Middleware para verificar se usuário pode usar análise AI
+ * Verifica se o usuário ainda tem análises de IA disponíveis hoje.
  */
-export async function requireAIAnalysis(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export const requireAIAnalysis: RequestHandler = async (req, res, next) => {
   try {
-    const user = req.user;
-    
-    // Reset daily counter se necessário
+    const user = req.user!;
+
+    // Zera o contador diário na virada do dia.
     const today = new Date();
     const lastReset = new Date(user.lastAiAnalysisReset);
-    
+
     if (today.toDateString() !== lastReset.toDateString()) {
-      // Reset daily usage
       await storage.resetDailyAIUsage(user.id);
       user.aiAnalysisUsedToday = 0;
       user.lastAiAnalysisReset = today;
     }
-    
-    // Verificar limite
+
     if (!canUseFeature(user.plan, 'aiAnalysisPerDay', user.aiAnalysisUsedToday)) {
       const dailyLimit = PLAN_FEATURES[user.plan].aiAnalysisPerDay;
-      
+
       return res.status(402).json({
         error: 'LIMIT_EXCEEDED',
-        message: 'Limite diário de análise AI atingido',
+        message: 'Limite diário de análise por IA atingido',
         limit: dailyLimit,
         used: user.aiAnalysisUsedToday,
         upgradeRequired: true,
-        suggestedPlans: user.plan === 'free' ? ['premium', 'vip'] : ['vip']
+        suggestedPlans: user.plan === 'free' ? ['premium', 'vip'] : ['vip'],
       });
     }
-    
+
     next();
   } catch (error) {
     console.error('Error checking AI analysis permission:', error);
     res.status(500).json({ message: 'Erro ao verificar permissões' });
   }
-}
+};
 
 /**
- * Middleware para recursos premium
+ * Fábrica de middlewares que exigem um recurso booleano do plano.
  */
-export function requirePremium(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const user = req.user;
-  
-  if (user.plan === 'free') {
+function requireFeature(
+  feature: keyof (typeof PLAN_FEATURES)["free"],
+  error: string,
+  message: string,
+): RequestHandler {
+  return (req, res, next) => {
+    const user = req.user!;
+
+    if (!canUseFeature(user.plan, feature)) {
+      return res.status(402).json({
+        error,
+        message,
+        upgradeRequired: true,
+        suggestedPlans: ['premium', 'vip'],
+      });
+    }
+
+    next();
+  };
+}
+
+/** Exige plano Premium ou VIP. */
+export const requirePremium: RequestHandler = (req, res, next) => {
+  if (req.user!.plan === 'free') {
     return res.status(402).json({
       error: 'PREMIUM_REQUIRED',
       message: 'Este recurso requer plano Premium ou VIP',
       upgradeRequired: true,
-      suggestedPlans: ['premium', 'vip']
+      suggestedPlans: ['premium', 'vip'],
     });
   }
-  
   next();
-}
+};
 
-/**
- * Middleware para recursos VIP
- */
-export function requireVIP(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const user = req.user;
-  
-  if (user.plan !== 'vip') {
+/** Exige plano VIP. */
+export const requireVIP: RequestHandler = (req, res, next) => {
+  if (req.user!.plan !== 'vip') {
     return res.status(402).json({
       error: 'VIP_REQUIRED',
       message: 'Este recurso é exclusivo para usuários VIP',
       upgradeRequired: true,
-      suggestedPlans: ['vip']
+      suggestedPlans: ['vip'],
     });
   }
-  
   next();
-}
+};
 
 /**
- * Middleware para verificar limite de receitas
+ * Verifica o limite de receitas do plano.
  */
-export async function requireRecipeLimit(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export const requireRecipeLimit: RequestHandler = async (req, res, next) => {
   try {
-    const user = req.user;
+    const user = req.user!;
     const userRecipes = await storage.getUserRecipes(user.id);
     const recipeCount = userRecipes.length;
-    
+
     if (!canUseFeature(user.plan, 'recipesLimit', recipeCount)) {
       const limit = PLAN_FEATURES[user.plan].recipesLimit;
-      
+
       return res.status(402).json({
         error: 'RECIPE_LIMIT_EXCEEDED',
         message: `Limite de receitas atingido (${limit})`,
         limit,
         used: recipeCount,
         upgradeRequired: true,
-        suggestedPlans: user.plan === 'free' ? ['premium', 'vip'] : ['vip']
+        suggestedPlans: user.plan === 'free' ? ['premium', 'vip'] : ['vip'],
       });
     }
-    
+
     next();
   } catch (error) {
     console.error('Error checking recipe limit:', error);
     res.status(500).json({ message: 'Erro ao verificar limite de receitas' });
   }
-}
+};
 
-/**
- * Middleware para recursos avançados de nutrição
- */
-export function requireAdvancedNutrition(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const user = req.user;
-  
-  if (!canUseFeature(user.plan, 'advancedNutritionAnalysis')) {
-    return res.status(402).json({
-      error: 'ADVANCED_NUTRITION_REQUIRED',
-      message: 'Análise nutricional avançada requer plano Premium ou VIP',
-      upgradeRequired: true,
-      suggestedPlans: ['premium', 'vip']
-    });
-  }
-  
-  next();
-}
+export const requireAdvancedNutrition = requireFeature(
+  'advancedNutritionAnalysis',
+  'ADVANCED_NUTRITION_REQUIRED',
+  'Análise nutricional avançada requer plano Premium ou VIP',
+);
 
-/**
- * Middleware para relatórios detalhados
- */
-export function requireDetailedReports(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const user = req.user;
-  
-  if (!canUseFeature(user.plan, 'detailedReports')) {
-    return res.status(402).json({
-      error: 'DETAILED_REPORTS_REQUIRED',
-      message: 'Relatórios detalhados requerem plano Premium ou VIP',
-      upgradeRequired: true,
-      suggestedPlans: ['premium', 'vip']
-    });
-  }
-  
-  next();
-}
+export const requireDetailedReports = requireFeature(
+  'detailedReports',
+  'DETAILED_REPORTS_REQUIRED',
+  'Relatórios detalhados requerem plano Premium ou VIP',
+);
 
-/**
- * Middleware para exportação de dados
- */
-export function requireDataExport(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const user = req.user;
-  
-  if (!canUseFeature(user.plan, 'exportData')) {
-    return res.status(402).json({
-      error: 'DATA_EXPORT_REQUIRED',
-      message: 'Exportação de dados requer plano Premium ou VIP',
-      upgradeRequired: true,
-      suggestedPlans: ['premium', 'vip']
-    });
-  }
-  
-  next();
-}
+export const requireDataExport = requireFeature(
+  'exportData',
+  'DATA_EXPORT_REQUIRED',
+  'Exportação de dados requer plano Premium ou VIP',
+);
 
-/**
- * Função helper para incrementar uso de AI
- */
+export const requireAdvancedWorkouts = requireFeature(
+  'advancedWorkoutPlans',
+  'ADVANCED_WORKOUTS_REQUIRED',
+  'Planos de treino avançados requerem plano Premium ou VIP',
+);
+
+/** Incrementa o contador diário de análises de IA. */
 export async function incrementDailyAIUsage(userId: string): Promise<void> {
   await storage.incrementDailyAIUsage(userId);
 }

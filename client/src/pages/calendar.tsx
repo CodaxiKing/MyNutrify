@@ -45,7 +45,7 @@ export default function Calendar() {
     : 0;
 
   return (
-    <div className="p-4 space-y-4 pb-20">
+    <div className="p-4 space-y-4 page-content">
       {/* Calendar Grid */}
       <CalendarGrid 
         data={calendarData}
@@ -127,7 +127,7 @@ export default function Calendar() {
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>Meals Logged</span>
+                  <span>Refeições registradas</span>
                   <span className="font-medium" data-testid="text-selected-day-meals">
                     {selectedDayData.mealCount} meals
                   </span>

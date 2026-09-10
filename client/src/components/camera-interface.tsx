@@ -37,8 +37,8 @@ export function CameraInterface({ onImageCapture, isAnalyzing }: CameraInterface
     } catch (error) {
       console.error("Error processing image:", error);
       toast({
-        title: "Processing Error",
-        description: "Failed to process the image. Please try again.",
+        title: "Erro ao processar",
+        description: "Não foi possível processar a imagem. Tente novamente.",
         variant: "destructive",
       });
     }
@@ -67,8 +67,8 @@ export function CameraInterface({ onImageCapture, isAnalyzing }: CameraInterface
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center text-white">
               <Camera className="h-16 w-16 mb-4 opacity-50 mx-auto" />
-              <p className="text-lg mb-2">Point camera at your food</p>
-              <p className="text-sm opacity-75">CalorieSnap will identify and calculate calories</p>
+              <p className="text-lg mb-2">Aponte a câmera para o alimento</p>
+              <p className="text-sm opacity-75">O MyNutrify identifica o alimento e calcula as calorias</p>
             </div>
           </div>
           

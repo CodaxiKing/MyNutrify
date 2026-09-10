@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Configuração de rede do build de DEBUG.
+
+  Libera HTTP em texto puro para qualquer endereço, porque o servidor pode
+  estar em qualquer IP da rede local e o app deixa esse endereço editável em
+  tempo de execução (tela "Servidor"). Fixar uma lista de IPs aqui tornaria
+  essa tela inútil — bastaria o roteador dar outro IP para o app parar de
+  conectar.
+
+  Este arquivo vale SOMENTE para o build de debug. O build de release usa
+  `src/main/res/xml/network_security_config.xml`, que exige HTTPS.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

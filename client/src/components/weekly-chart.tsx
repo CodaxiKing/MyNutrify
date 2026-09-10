@@ -12,7 +12,7 @@ interface WeeklyChartProps {
 export function WeeklyChart({ data = [] }: WeeklyChartProps) {
   const chartData = useMemo(() => {
     const today = new Date();
-    const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const daysOfWeek = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     const weekData = [];
     
     // Generate the last 7 days
@@ -41,7 +41,7 @@ export function WeeklyChart({ data = [] }: WeeklyChartProps) {
   return (
     <Card>
       <CardContent className="p-6">
-        <h3 className="text-lg font-semibold mb-4">This Week</h3>
+        <h3 className="text-base font-semibold mb-4">Esta semana</h3>
         <div className="flex items-end justify-between h-32 space-x-2 mb-4">
           {chartData.map((day, index) => {
             const height = maxCalories > 0 ? (day.calories / maxCalories) * 100 : 0;
@@ -54,8 +54,8 @@ export function WeeklyChart({ data = [] }: WeeklyChartProps) {
                     isToday ? 'bg-accent' : 'bg-primary'
                   } mb-2`}
                   style={{ height: `${Math.max(5, height)}%` }}
-                  title={`${day.day}: ${formatCalories(day.calories)} cal`}
-                  data-testid={`bar-${day.day.toLowerCase()}`}
+                  title={`${day.day}: ${formatCalories(day.calories)} kcal`}
+                  data-testid={`bar-day-${index}`}
                 />
                 <span className={`text-xs ${
                   isToday ? 'text-primary font-medium' : 'text-muted-foreground'
@@ -68,9 +68,9 @@ export function WeeklyChart({ data = [] }: WeeklyChartProps) {
         </div>
         
         <div className="text-center">
-          <span className="text-sm text-muted-foreground">Average: </span>
+          <span className="text-sm text-muted-foreground">Média: </span>
           <span className="font-semibold" data-testid="text-weekly-average">
-            {formatCalories(averageCalories)} cal
+            {formatCalories(averageCalories)} kcal
           </span>
         </div>
       </CardContent>

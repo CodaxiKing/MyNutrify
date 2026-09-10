@@ -23,16 +23,16 @@ export async function analyzeFoodImage(base64Image: string): Promise<FoodAnalysi
   // This can be disabled by setting DISABLE_OPENAI_MOCK=true
   if (process.env.DISABLE_OPENAI_MOCK !== 'true') {
     return {
-      name: "Grilled Chicken Breast",
+      name: "Peito de frango grelhado",
       confidence: 0.85,
       calories: 185,
-      servingSize: "1 medium breast (85g)",
+      servingSize: "1 peito médio (85 g)",
       macronutrients: {
         carbs: 0,
         protein: 35,
         fat: 4,
       },
-      description: "A lean grilled chicken breast, a good source of protein",
+      description: "Peito de frango grelhado, uma fonte de proteínas",
     };
   }
 
@@ -59,6 +59,7 @@ Return the response in this exact JSON format:
 }
 
 Guidelines:
+- Write all food names, serving sizes and descriptions in Brazilian Portuguese. Keep the JSON keys unchanged.
 - Be as accurate as possible with calorie and macronutrient estimates
 - Consider typical serving sizes for the identified food
 - Confidence should be between 0 and 1
@@ -96,7 +97,7 @@ Guidelines:
       name: result.name,
       confidence: Math.min(1, Math.max(0, result.confidence || 0.5)),
       calories: Math.max(0, result.calories),
-      servingSize: result.servingSize || "1 serving",
+      servingSize: result.servingSize || "1 porção",
       macronutrients: {
         carbs: Math.max(0, result.macronutrients.carbs || 0),
         protein: Math.max(0, result.macronutrients.protein || 0),
@@ -122,6 +123,7 @@ export async function generateFoodSuggestions(query: string): Promise<string[]> 
 Format: ["food1", "food2", "food3", ...]
 
 Focus on:
+- Write all suggestions in Brazilian Portuguese
 - Similar foods with better nutritional profiles
 - Healthy alternatives
 - Different preparation methods

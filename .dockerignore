@@ -1,0 +1,11 @@
+node_modules
+dist
+build-output
+android
+.git
+.env
+.env.*
+*.apk
+*.aab
+attached_assets
+docs

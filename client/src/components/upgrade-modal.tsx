@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { PlanTier } from '@shared/plans';
+import { apiFetch } from "@/lib/api-url";
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -88,7 +89,7 @@ export function UpgradeModal({ isOpen, onClose, currentPlan = 'free', restricted
     
     setIsProcessing(true);
     try {
-      const response = await fetch('/api/stripe/create-checkout', {
+      const response = await apiFetch('/api/create-checkout-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

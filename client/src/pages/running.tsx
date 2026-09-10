@@ -554,7 +554,7 @@ export default function RunningPage() {
 
   if (gpsStatus.hasPermission === false) {
     return (
-      <div className="p-4 space-y-6 pb-20">
+      <div className="p-4 space-y-6 page-content">
         <Card>
           <CardContent className="p-6 text-center">
             <MapPin className="h-12 w-12 mx-auto mb-4 text-red-500" />
@@ -573,7 +573,7 @@ export default function RunningPage() {
 
   if (gpsStatus.hasPermission === null) {
     return (
-      <div className="p-4 space-y-6 pb-20">
+      <div className="p-4 space-y-6 page-content">
         <Card>
           <CardContent className="p-6 text-center">
             <MapPin className="h-12 w-12 mx-auto mb-4 text-blue-500 animate-pulse" />
@@ -588,7 +588,7 @@ export default function RunningPage() {
   }
 
   return (
-    <div className="p-4 space-y-4 pb-20">
+    <div className="p-4 space-y-4 page-content">
       {/* Status Header */}
       <Card>
         <CardContent className="p-4">

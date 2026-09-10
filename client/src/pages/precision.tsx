@@ -18,16 +18,8 @@ import { RecipeManager } from '@/components/recipe-manager';
 import { AddToMealModal } from '@/components/add-to-meal-modal';
 import { toast } from '@/hooks/use-toast';
 
-interface Food {
-  id: string;
-  name: string;
-  caloriesPerServing: number;
-  servingSize: string;
-  carbs?: number;
-  protein?: number;
-  fat?: number;
-  source?: string;
-}
+import type { Food } from "@/types/nutrition";
+import { apiFetch } from "@/lib/api-url";
 
 interface Recipe {
   id?: string;
@@ -52,7 +44,7 @@ export default function Precision() {
 
   const handleBarcodeDetected = async (barcode: string) => {
     try {
-      const response = await fetch('/api/food/barcode', {
+      const response = await apiFetch('/api/food/barcode', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -122,7 +114,7 @@ export default function Precision() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4 space-y-6">
+    <div className="page-content min-h-screen bg-background p-4 space-y-6">
       {/* Header */}
       <div className="text-center space-y-2">
         <h1 className="text-2xl font-bold flex items-center justify-center gap-2">
@@ -193,11 +185,6 @@ export default function Precision() {
                             {food.caloriesPerServing} cal • {food.servingSize}
                           </p>
                         </div>
-                        {food.source && (
-                          <Badge variant="secondary" className="text-xs">
-                            {food.source === 'openfoodfacts' ? 'OpenFoodFacts' : 'Banco de Dados'}
-                          </Badge>
-                        )}
                       </div>
                     ))}
                   </div>

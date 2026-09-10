@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { MealEntry, DailySummary, FoodAnalysis, Exercise, ActivityEntry } from "@/types/nutrition";
+import { apiFetch } from "@/lib/api-url";
 
 export function useDailySummary(date?: Date) {
   const dateParam = date ? date.toISOString().split('T')[0] : undefined;
@@ -30,7 +31,7 @@ export function useAnalyzeFood() {
       const formData = new FormData();
       formData.append('image', imageFile);
       
-      const response = await fetch('/api/food/analyze', {
+      const response = await apiFetch('/api/food/analyze', {
         method: 'POST',
         body: formData,
         credentials: 'include',

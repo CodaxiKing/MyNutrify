@@ -43,7 +43,7 @@ export default function Diary() {
     try {
       await deleteMeal.mutateAsync(mealId);
       toast({
-        title: "Meal Deleted",
+        title: "Refeição removida",
         description: "The meal has been removed from your diary.",
       });
     } catch (error) {
@@ -63,7 +63,7 @@ export default function Diary() {
   });
 
   return (
-    <div className="p-4 space-y-4 pb-20">
+    <div className="p-4 space-y-4 page-content">
       {/* Date Navigation */}
       <div className="flex items-center justify-between">
         <Button

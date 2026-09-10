@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,32 +8,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, X } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
-interface Food {
-  id: string;
-  name: string;
-  caloriesPerServing: number;
-  servingSize: string;
-  carbs?: number | null;
-  protein?: number | null;
-  fat?: number | null;
-  source?: string | null;
-  createdAt?: Date | null;
-  imageUrl?: string | null;
-  confidence?: number | null;
-  barcode?: string | null;
-}
+import type { Food } from "@/types/nutrition";
+import { apiFetch } from "@/lib/api-url";
 
 interface AddToMealModalProps {
   isOpen: boolean;
   onClose: () => void;
   food: Food | null;
   onFoodAdded: () => void;
+  initialQuantity?: number;
 }
 
-export function AddToMealModal({ isOpen, onClose, food, onFoodAdded }: AddToMealModalProps) {
+export function AddToMealModal({ isOpen, onClose, food, onFoodAdded, initialQuantity = 1 }: AddToMealModalProps) {
   const [quantity, setQuantity] = useState(1);
   const [mealType, setMealType] = useState('breakfast');
   const [isLoading, setIsLoading] = useState(false);
+  useEffect(() => {
+    if (isOpen) setQuantity(initialQuantity);
+  }, [isOpen, food?.id, initialQuantity]);
 
   const handleAddToMeal = async () => {
     if (!food) return;
@@ -56,7 +48,7 @@ export function AddToMealModal({ isOpen, onClose, food, onFoodAdded }: AddToMeal
         foodId: food.id,
       };
 
-      const response = await fetch('/api/meals', {
+      const response = await apiFetch('/api/meals', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -107,31 +99,6 @@ export function AddToMealModal({ isOpen, onClose, food, onFoodAdded }: AddToMeal
     }
   };
 
-  const getSourceBadgeColor = (source: string) => {
-    switch (source) {
-      case 'openfoodfacts':
-        return 'bg-green-100 text-green-800';
-      case 'ai':
-        return 'bg-blue-100 text-blue-800';
-      case 'manual':
-        return 'bg-purple-100 text-purple-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const getSourceLabel = (source: string) => {
-    switch (source) {
-      case 'openfoodfacts':
-        return 'OpenFoodFacts';
-      case 'ai':
-        return 'IA';
-      case 'manual':
-        return 'Manual';
-      default:
-        return 'Banco de Dados';
-    }
-  };
 
   if (!food) return null;
 
@@ -156,14 +123,6 @@ export function AddToMealModal({ isOpen, onClose, food, onFoodAdded }: AddToMeal
             <CardContent className="p-4">
               <div className="flex justify-between items-start mb-3">
                 <h3 className="font-semibold text-lg">{food.name}</h3>
-                {food.source && (
-                  <Badge 
-                    variant="secondary" 
-                    className={`text-xs ${getSourceBadgeColor(food.source)}`}
-                  >
-                    {getSourceLabel(food.source)}
-                  </Badge>
-                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground mb-4">

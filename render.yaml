@@ -1,0 +1,63 @@
+# Blueprint do Render.
+#
+# Cria o serviço web já configurado. O banco fica no Neon (fora do Render),
+# porque o Postgres gratuito do Render expira em 90 dias.
+#
+# Como usar:
+#   1. Suba o repositório para o GitHub.
+#   2. No Render: New > Blueprint > aponte para o repositório.
+#   3. Preencha DATABASE_URL com a string de conexão do Neon.
+#
+# O plano `free` hiberna após 15 minutos sem uso e leva de 30 a 50 segundos
+# para acordar. Troque para `starter` se isso incomodar.
+
+services:
+  - type: web
+    name: mynutrify-api
+    runtime: node
+    plan: free
+    region: oregon
+
+    # `--include=dev` é obrigatório: o Render define NODE_ENV=production, o que
+    # faria o npm pular as devDependencies — e sem vite e esbuild o build falha.
+    # O `db:push` roda aqui porque as variáveis já estão disponíveis no build e
+    # o plano gratuito não tem preDeployCommand.
+    buildCommand: npm install --include=dev && npm run db:push && npm run build
+
+    startCommand: npm start
+    healthCheckPath: /api/food/sources
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Conexão do Neon. Cole em Environment depois de criar o serviço —
+      # `sync: false` impede que o valor fique versionado no repositório.
+      - key: DATABASE_URL
+        sync: false
+
+      # Postgres gerenciado exige TLS.
+      - key: PGSSL
+        value: "true"
+
+      # Cadastro liberado só até existir a primeira conta com senha.
+      # Use "false" para fechar de vez depois de criar a sua.
+      - key: ALLOW_REGISTRATION
+        value: first-user
+
+      # Origens extras além das do app nativo (que já são liberadas por padrão).
+      # Preencha se for servir a versão web em outro domínio.
+      - key: CORS_ORIGINS
+        sync: false
+
+      # Opcionais — deixe em branco para manter os recursos desligados.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DISABLE_OPENAI_MOCK
+        value: "false"
+      - key: USDA_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false

@@ -2,6 +2,8 @@
  * Frontend elevation service to communicate with backend elevation API
  */
 
+import { apiFetch } from "@/lib/api-url";
+
 interface ElevationPoint {
   lat: number;
   lon: number;
@@ -142,7 +144,7 @@ class ElevationService {
   }
 
   private async fetchFromAPI(points: ElevationPoint[]): Promise<ElevationResponse[]> {
-    const response = await fetch('/api/elevation', {
+    const response = await apiFetch('/api/elevation', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

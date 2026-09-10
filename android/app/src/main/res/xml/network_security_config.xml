@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Configuração de rede padrão (vale para o build de RELEASE).
+
+  Exige HTTPS em tudo: a partir do Android 9 o tráfego em texto puro é
+  bloqueado por padrão, e manter esse padrão no release é o comportamento
+  correto para um app publicado.
+
+  O build de debug substitui este arquivo por
+  `src/debug/res/xml/network_security_config.xml`, que libera HTTP para o
+  servidor de desenvolvimento rodar na rede local.
+
+  Se você publicar e a API estiver em HTTPS, não precisa mexer aqui.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

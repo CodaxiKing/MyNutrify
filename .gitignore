@@ -4,3 +4,19 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Segredos: DATABASE_URL, chaves da OpenAI e da Stripe nunca vão para o repo.
+.env
+.env.*
+!.env.example
+
+# Android (Capacitor) — o projeto nativo é versionado, os artefatos não.
+android/build
+android/app/build
+android/.gradle
+android/local.properties
+android/app/src/main/assets/public
+android/app/src/main/assets/capacitor.config.json
+android/capacitor-cordova-android-plugins
+*.apk
+*.aab
